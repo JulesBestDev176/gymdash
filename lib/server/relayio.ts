@@ -1,5 +1,5 @@
 ﻿type Dict = Record<string, unknown>;
-type Status = 'sent' | 'pending' | 'failed' | 'unknown';
+type Status = 'sent' | 'delivered' | 'read' | 'pending' | 'failed' | 'unknown';
 export interface RelayioConfig { baseUrl: string; apiKey: string; sessionId: string }
 export interface RelayioMessage { id: string; to: string; body: string; status: Status; createdAt?: string; direction: string }
 interface Session { id: string; name: string; status: string; phone: string }
@@ -19,7 +19,7 @@ export class RelayioError extends Error {
 }
 export function normalizeMessage(value: unknown): RelayioMessage {
   const m = object(value), direction = text(m.direction).toLowerCase(), raw = text(m.status).toLowerCase();
-  const status: Status = ['sent', 'delivered', 'read'].includes(raw) ? 'sent'
+  const status: Status = raw === 'read' ? 'read' : raw === 'delivered' ? 'delivered' : raw === 'sent' ? 'sent'
     : ['pending', 'queued', 'sending'].includes(raw) ? 'pending'
     : ['failed', 'undelivered', 'error'].includes(raw) ? 'failed' : 'unknown';
   const date = text(m.timestamp) || text(m.createdAt);
@@ -74,7 +74,7 @@ export function createRelayio(config: RelayioConfig, fetcher: typeof fetch = fet
   async function snapshot(): Promise<RelayioSnapshot> {
     const result: RelayioSnapshot = {
       configured: Boolean(config.apiKey), connected: false, state: 'unconfigured', channel: null,
-      messages: [], stats: { total: 0, sent: 0, pending: 0, failed: 0, unknown: 0 }, historyScope: 'fetched', historyAvailable: false,
+      messages: [], stats: { total: 0, sent: 0, delivered: 0, read: 0, pending: 0, failed: 0, unknown: 0 }, historyScope: 'fetched', historyAvailable: false,
     };
     try {
       result.channel = await selectSession();
@@ -98,7 +98,11 @@ export function createRelayio(config: RelayioConfig, fetcher: typeof fetch = fet
     if (!body || body.length > 4096) throw new RelayioError('Le message doit contenir entre 1 et 4096 caractères.', 'connected', 400);
     const session = await selectSession();
     if (session.status.toUpperCase() !== 'READY') throw new RelayioError('Veuillez reconnecter la session WhatsApp dans Relayio avant tout envoi.', 'disconnected', 409);
-    return normalizeMessage(await request(`/sessions/${encodeURIComponent(session.id)}/messages/text`, { method: 'POST', body: JSON.stringify({ chatId: `${phone}@c.us`, body }) }));
+    // This self-hosted Relayio passes the address unchanged to Baileys.
+    const message = normalizeMessage(await request(`/sessions/${encodeURIComponent(session.id)}/messages/text`, { method: 'POST', body: JSON.stringify({ chatId: `${phone}@s.whatsapp.net`, body }) }));
+    if (message.status === 'failed') throw new RelayioError('L’envoi a échoué dans Relayio.');
+    if (!message.id) throw new RelayioError('Relayio n’a pas confirmé la prise en charge du message. Vérifiez l’historique avant de réessayer.');
+    return message;
   }
   return { snapshot, send };
 }

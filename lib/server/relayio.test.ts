@@ -47,7 +47,8 @@ test('sent-only upstream responses without direction remain visible, received st
   ]));
   const result = await client.snapshot();
   assert.deepEqual(result.messages.map(message => message.id), ['legacy-outgoing']);
-  assert.equal(result.stats.sent, 1);
+  assert.equal(result.stats.sent, 0);
+  assert.equal(result.stats.delivered, 1);
   assert.doesNotMatch(JSON.stringify(result), /private-inbound/);
 });
 
@@ -88,7 +89,7 @@ test('send uses required chatId text contract with normalized phone, mocked only
     if (++count === 1) return reply([session]);
     assert.equal(String(input), 'https://relay.example/v1/sessions/ses_one/messages/text');
     assert.equal(init?.method, 'POST');
-    assert.deepEqual(JSON.parse(String(init?.body)), { chatId: '221770000000@c.us', body: 'fixture' });
+    assert.deepEqual(JSON.parse(String(init?.body)), { chatId: '221770000000@s.whatsapp.net', body: 'fixture' });
     return reply({ id: 'queued-message', status: 'queued' }, 201);
   });
   assert.equal((await client.send({ to: '+221 77 000 00 00', body: 'fixture' })).status, 'pending');
@@ -98,6 +99,21 @@ test('send uses required chatId text contract with normalized phone, mocked only
 
 test('unknown outbound status stays unknown, not failed', () => {
   assert.equal(normalizeMessage({ id: 'x', direction: 'outbound', status: 'new_status' }).status, 'unknown');
+});
+
+test('delivery receipts remain distinct from sent without delivery confirmation', () => {
+  assert.equal(normalizeMessage({ id: 'a', status: 'sent' }).status, 'sent');
+  assert.equal(normalizeMessage({ id: 'b', status: 'delivered' }).status, 'delivered');
+  assert.equal(normalizeMessage({ id: 'c', status: 'read' }).status, 'read');
+});
+
+test('a successful HTTP response cannot hide a failed or malformed send', async () => {
+  for (const payload of [{ id: 'failed', status: 'failed' }, {}, null]) {
+    let count = 0;
+    const client = createRelayio(config, async () => ++count === 1 ? reply([session]) : reply(payload, 201));
+    await assert.rejects(client.send({ to: '+221770000000', body: 'fixture' }), /confirm|échoué/);
+    assert.equal(count, 2, 'never retry a send automatically');
+  }
 });
 
 test('missing selected session and transport errors are actionable and sanitized', async () => {

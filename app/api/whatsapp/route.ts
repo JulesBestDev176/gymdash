@@ -17,8 +17,10 @@ export async function POST(req: Request) {
   catch { return NextResponse.json({ error: 'Le message est illisible.' }, { status: 400 }); }
   try {
     const message = await createRelayio(relayioConfig()).send(input);
+    console.info('[whatsapp.test]', { event: 'relayio_response', status: message.status });
     return NextResponse.json({ message }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
+    console.warn('[whatsapp.test]', { event: 'send_unconfirmed', state: error instanceof RelayioError ? error.state : 'upstream_error' });
     return NextResponse.json({ error: error instanceof RelayioError ? error.message : 'Envoi temporairement indisponible.' }, {
       status: error instanceof RelayioError ? error.status : 502,
     });

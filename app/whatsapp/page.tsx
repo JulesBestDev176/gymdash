@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────────────── */
-type MsgStatus = 'sent' | 'pending' | 'failed' | 'unknown' | 'all';
+type MsgStatus = 'sent' | 'delivered' | 'read' | 'pending' | 'failed' | 'unknown' | 'all';
 
 interface WaMessage {
   id: string;
@@ -30,7 +30,7 @@ interface WaData {
   historyAvailable: boolean;
   channel: { name: string; phone: string; status: string } | null;
   messages: WaMessage[];
-  stats: { total: number; sent: number; pending: number; failed: number; unknown: number };
+  stats: { total: number; sent: number; delivered: number; read: number; pending: number; failed: number; unknown: number };
 }
 
 /* ── Helpers ────────────────────────────────────────────────── */
@@ -38,15 +38,17 @@ const PAGE_SIZE = 25;
 
 function resolveStatus(raw: string): Exclude<MsgStatus, 'all'> {
   const s = (raw ?? '').toLowerCase();
-  if (['delivered', 'read', 'sent'].includes(s)) return 'sent';
+  if (s === 'delivered' || s === 'read' || s === 'sent') return s;
   if (['queued', 'pending', 'sending'].includes(s)) return 'pending';
   if (['failed', 'undelivered', 'error'].includes(s)) return 'failed';
   return 'unknown';
 }
 
 const STATUS_META = {
+  delivered: { label: 'Livré', color: 'var(--success)', bg: 'rgba(34,217,110,0.12)', icon: <CheckCircle size={11} /> },
+  read: { label: 'Lu', color: 'var(--success)', bg: 'rgba(34,217,110,0.12)', icon: <CheckCircle size={11} /> },
   unknown: { label: 'Inconnu', color: 'var(--fg3)', bg: 'var(--bg2)', icon: <AlertCircle size={11} /> },
-  sent:    { label: 'Envoyé',     color: 'var(--success)', bg: 'rgba(34,217,110,0.12)',  icon: <CheckCircle size={11} /> },
+  sent:    { label: 'Envoyé · livraison non confirmée', color: 'var(--warning)', bg: 'rgba(255,170,0,0.12)', icon: <Clock size={11} /> },
   pending: { label: 'En attente', color: 'var(--warning)', bg: 'rgba(255,170,0,0.12)',   icon: <Clock size={11} /> },
   failed:  { label: 'Échoué',     color: 'var(--danger)',  bg: 'rgba(255,68,85,0.12)',   icon: <XCircle size={11} /> },
 };
@@ -80,6 +82,7 @@ export default function WhatsappPage() {
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult]   = useState<'ok' | 'err' | null>(null);
   const [testError, setTestError] = useState('');
+  const [testNotice, setTestNotice] = useState('');
 
   const load = useCallback(() => {
     setLoading(true); setError('');
@@ -122,7 +125,12 @@ export default function WhatsappPage() {
         body: JSON.stringify({ to: testTo.trim(), body: testBody }),
       });
       const result = await r.json().catch(() => ({}));
-      setTestResult(r.ok ? 'ok' : 'err');
+      const accepted = r.ok && Boolean(result.message?.id) && result.message?.status !== 'failed';
+      setTestResult(accepted ? 'ok' : 'err');
+      if (accepted) setTestNotice(result.message.status === 'delivered' || result.message.status === 'read'
+        ? 'Livraison confirmée par Relayio.'
+        : 'Message pris en charge par Relayio. La livraison au téléphone n’est pas confirmée ; consultez son statut dans l’historique.');
+      if (r.ok && !accepted) setTestError('Prise en charge non confirmée. Vérifiez l’historique avant de réessayer.');
       if (!r.ok) setTestError(result.error || 'Envoi impossible. Vérifiez la connexion WhatsApp et réessayez.');
       if (r.ok) setTimeout(load, 2000);
     } catch { setTestResult('err'); setTestError('Impossible de joindre le serveur. Réessayez.'); }
@@ -211,6 +219,7 @@ export default function WhatsappPage() {
             {[
               { label: 'Messages sortants', value: data?.stats.total ?? 0, color: 'var(--fg2)', icon: <MessageCircle size={13} /> },
               { label: 'Envoyés',      value: data?.stats.sent ?? 0,    color: 'var(--success)', icon: <CheckCircle size={13} /> },
+              { label: 'Livrés / lus', value: (data?.stats.delivered ?? 0) + (data?.stats.read ?? 0), color: 'var(--success)', icon: <CheckCircle size={13} /> },
               { label: 'En attente',    value: data?.stats.pending ?? 0, color: 'var(--warning)', icon: <Clock size={13} /> },
               { label: 'Échoués',       value: data?.stats.failed ?? 0,  color: 'var(--danger)',  icon: <XCircle size={13} /> },
             ].map(({ label, value, color, icon }) => (
@@ -253,7 +262,7 @@ export default function WhatsappPage() {
             </div>
             {testResult === 'ok' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--success)', fontSize: 12 }}>
-                <CheckCircle size={13} /> Message accepté par Relayio
+                <CheckCircle size={13} /> {testNotice}
               </div>
             )}
             {testResult === 'err' && (
@@ -285,6 +294,8 @@ export default function WhatsappPage() {
             {([
               { key: 'all' as MsgStatus, label: 'Tous', count: messages.length },
               { key: 'sent' as MsgStatus, label: 'Envoyés', count: data?.stats.sent ?? 0 },
+              { key: 'delivered' as MsgStatus, label: 'Livrés', count: data?.stats.delivered ?? 0 },
+              { key: 'read' as MsgStatus, label: 'Lus', count: data?.stats.read ?? 0 },
               { key: 'unknown' as MsgStatus, label: 'Inconnus', count: data?.stats.unknown ?? 0 },
               { key: 'pending' as MsgStatus, label: 'En attente', count: data?.stats.pending ?? 0 },
               { key: 'failed' as MsgStatus, label: 'Échoués', count: data?.stats.failed ?? 0 },
