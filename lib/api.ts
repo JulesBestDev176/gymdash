@@ -79,6 +79,21 @@ export interface GlobalStats {
   revenuePerGym: { gymId: string; gymNom: string; monthly: { label: string; revenu: number }[]; revenuMois: number }[];
 }
 
+export type MemberStatut = 'ACTIF' | 'EXPIRE' | 'EXPIRE_DEMAIN' | 'CARTE_DESACTIVEE';
+
+export interface Member {
+  id: string;
+  nom: string;
+  prenom: string;
+  telephone: string;
+  numeroCarte: string;
+  photoUrl?: string | null;
+  carteActive: boolean;
+  createdAt: string;
+  statut: MemberStatut;
+  subscriptions?: { dateExpiration: string; formule: string }[];
+}
+
 // Helpers
 export const fmtFcfa = (n: number) =>
   new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';

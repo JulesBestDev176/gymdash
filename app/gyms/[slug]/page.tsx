@@ -5,11 +5,12 @@ import Link from 'next/link';
 import Shell from '@/components/shell';
 import EmptyState from '@/components/ui/empty-state';
 import Spinner from '@/components/ui/spinner';
-import { adminApi, fmtFcfa, Gym, GymStatut, User } from '@/lib/api';
+import { adminApi, fmtFcfa, Gym, GymStatut, User, Member, MemberStatut } from '@/lib/api';
 import {
   ArrowLeft, UserPlus, CreditCard, Users, Building2,
   TrendingUp, MapPin, Settings, AlertCircle,
   ChevronDown, RefreshCw, X, Eye, EyeOff,
+  Search, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
 /* ── types ────────────────────────────────────────────────── */
@@ -22,7 +23,16 @@ interface Payment {
   member: { nom: string; prenom: string };
 }
 
-type TabKey = 'apercu' | 'equipe' | 'paiements';
+type TabKey = 'apercu' | 'adherents' | 'equipe' | 'paiements';
+
+const PAGE_SIZE = 20;
+
+const MEMBER_STATUT_META: Record<MemberStatut, { label: string; cls: string }> = {
+  ACTIF:            { label: 'Actif',         cls: 'badge badge-success' },
+  EXPIRE_DEMAIN:    { label: 'Expire demain',  cls: 'badge badge-warning' },
+  EXPIRE:           { label: 'Expiré',         cls: 'badge badge-danger'  },
+  CARTE_DESACTIVEE: { label: 'Carte désact.',  cls: 'badge badge-neutral' },
+};
 
 /* ── constants ────────────────────────────────────────────── */
 const STATUT_META: Record<GymStatut, { label: string; cls: string }> = {
@@ -45,7 +55,8 @@ const TYPE_META: Record<string, string> = {
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'apercu',    label: 'Aperçu',    icon: <Building2 size={13} /> },
-  { key: 'equipe',    label: 'Équipe',    icon: <Users size={13} /> },
+  { key: 'adherents', label: 'Adhérents', icon: <Users size={13} /> },
+  { key: 'equipe',    label: 'Équipe',    icon: <UserPlus size={13} /> },
   { key: 'paiements', label: 'Paiements', icon: <CreditCard size={13} /> },
 ];
 
@@ -302,8 +313,11 @@ export default function GymDetailPage() {
 
   const [tab, setTab]         = useState<TabKey>('apercu');
   const [gym, setGym]         = useState<Gym | null>(null);
-  const [users, setUsers]     = useState<User[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [users, setUsers]         = useState<User[]>([]);
+  const [payments, setPayments]   = useState<Payment[]>([]);
+  const [members, setMembers]     = useState<Member[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [memberPage, setMemberPage]     = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [statutMenu, setStatutMenu] = useState(false);
@@ -321,14 +335,16 @@ export default function GymDetailPage() {
         if (!found) { setError('Salle introuvable'); return; }
         setGym(found);
         return Promise.all([
-          adminApi.get(`/api/v1/users?gymId=${found.id}`).catch(() => ({ data: [] })),
+          adminApi.get(`/api/v1/gym/${found.id}/users`).catch(() => ({ data: [] })),
           adminApi.get(`/api/v1/payments?gymId=${found.id}`).catch(() => ({ data: [] })),
+          adminApi.get(`/api/v1/gym/${found.id}/members`).catch(() => ({ data: [] })),
         ]);
       })
       .then((results) => {
         if (results) {
           setUsers(Array.isArray(results[0].data) ? results[0].data : []);
           setPayments(Array.isArray(results[1].data) ? results[1].data : []);
+          setMembers(Array.isArray(results[2].data) ? results[2].data : []);
         }
       })
       .catch(() => setError('Erreur de chargement'))
@@ -487,6 +503,17 @@ export default function GymDetailPage() {
               style={{ gap: 6 }}
             >
               {icon}{label}
+              {key === 'adherents' && members.length > 0 && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  minWidth: 18, height: 16, padding: '0 5px', borderRadius: 99,
+                  fontSize: 10, fontWeight: 700,
+                  background: tab === key ? 'rgba(181,255,45,0.15)' : 'var(--card3)',
+                  color: tab === key ? 'var(--accent)' : 'var(--fg3)',
+                }}>
+                  {members.length}
+                </span>
+              )}
               {key === 'equipe' && users.length > 0 && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -543,6 +570,132 @@ export default function GymDetailPage() {
             </div>
           </div>
         )}
+
+        {/* ══ ADHÉRENTS ═══════════════════════════════════ */}
+        {tab === 'adherents' && (() => {
+          const q = memberSearch.trim().toLowerCase();
+          const filtered = q
+            ? members.filter((m) =>
+                `${m.prenom} ${m.nom}`.toLowerCase().includes(q) ||
+                m.telephone.includes(q) ||
+                m.numeroCarte.toLowerCase().includes(q)
+              )
+            : members;
+          const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+          const page = Math.min(memberPage, totalPages);
+          const slice = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+          return (
+            <div className="card" style={{ overflow: 'hidden' }}>
+              {/* Toolbar */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '12px 16px', borderBottom: '1px solid var(--border)',
+              }}>
+                <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
+                  <Search size={12} style={{
+                    position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                    color: 'var(--fg3)', pointerEvents: 'none',
+                  }} />
+                  <input
+                    type="search"
+                    className="input-base"
+                    placeholder="Nom, téléphone, n° carte…"
+                    value={memberSearch}
+                    onChange={(e) => { setMemberSearch(e.target.value); setMemberPage(1); }}
+                    style={{ paddingLeft: 30, fontSize: 12.5, background: 'var(--bg2)', border: '1px solid var(--border2)' }}
+                  />
+                </div>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--fg3)', whiteSpace: 'nowrap' }}>
+                  <span className="num" style={{ color: 'var(--fg2)', fontWeight: 600 }}>{filtered.length}</span>
+                  {' '}adhérent{filtered.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {/* Table */}
+              {members.length === 0 ? (
+                <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--fg3)', fontSize: 13 }}>
+                  Aucun adhérent enregistré pour cette salle
+                </div>
+              ) : filtered.length === 0 ? (
+                <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--fg3)', fontSize: 13 }}>
+                  Aucun résultat pour « <strong style={{ color: 'var(--fg2)' }}>{memberSearch}</strong> »
+                </div>
+              ) : (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 40 }}>#</th>
+                      <th>Adhérent</th>
+                      <th>N° Carte</th>
+                      <th>Téléphone</th>
+                      <th>Statut</th>
+                      <th style={{ textAlign: 'right' }}>Expiration</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {slice.map((m, i) => {
+                      const globalIdx = (page - 1) * PAGE_SIZE + i + 1;
+                      const exp = m.subscriptions?.[0]?.dateExpiration;
+                      const smeta = MEMBER_STATUT_META[m.statut] ?? MEMBER_STATUT_META.EXPIRE;
+                      return (
+                        <tr key={m.id}>
+                          <td>
+                            <span className="num" style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg3)' }}>
+                              {String(globalIdx).padStart(2, '0')}
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: 600 }}>{m.prenom} {m.nom}</td>
+                          <td>
+                            <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'monospace', color: 'var(--fg2)', background: 'var(--card3)', padding: '2px 7px', borderRadius: 5 }}>
+                              {m.numeroCarte}
+                            </span>
+                          </td>
+                          <td style={{ color: 'var(--fg2)', fontSize: 13 }}>{m.telephone}</td>
+                          <td><span className={smeta.cls} style={{ fontSize: 10 }}>{smeta.label}</span></td>
+                          <td style={{ textAlign: 'right', color: 'var(--fg3)', fontSize: 12 }}>
+                            {exp
+                              ? new Date(exp).toLocaleDateString('fr-FR')
+                              : <span style={{ color: 'var(--border3)' }}>—</span>
+                            }
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 16px', borderTop: '1px solid var(--border)',
+                }}>
+                  <button
+                    onClick={() => setMemberPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="btn-ghost"
+                    style={{ padding: '5px 10px', fontSize: 12, gap: 4 }}
+                  >
+                    <ChevronLeft size={13} /> Précédent
+                  </button>
+                  <span style={{ fontSize: 12, color: 'var(--fg3)' }}>
+                    Page <span className="num" style={{ color: 'var(--fg2)', fontWeight: 700 }}>{page}</span> / <span className="num">{totalPages}</span>
+                  </span>
+                  <button
+                    onClick={() => setMemberPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="btn-ghost"
+                    style={{ padding: '5px 10px', fontSize: 12, gap: 4 }}
+                  >
+                    Suivant <ChevronRight size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ══ ÉQUIPE ══════════════════════════════════════ */}
         {tab === 'equipe' && (
