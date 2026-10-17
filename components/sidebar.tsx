@@ -5,14 +5,21 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Building2, Users, CreditCard,
   Activity, ClipboardList, UserCheck, LogOut,
+  Dumbbell, ListVideo, UserCircle,
 } from 'lucide-react';
 
 const NAV_MAIN = [
   { href: '/dashboard',  label: 'Dashboard',    icon: LayoutDashboard },
   { href: '/gyms',       label: 'Salles',        icon: Building2 },
   { href: '/adherents',  label: 'Adhérents',     icon: UserCheck },
-  { href: '/users',      label: 'Utilisateurs',  icon: Users },
+  { href: '/users',      label: 'Équipe',        icon: Users },
   { href: '/payments',   label: 'Paiements',     icon: CreditCard },
+];
+
+const NAV_GYMBRO = [
+  { href: '/gymbro/utilisateurs', label: 'Utilisateurs', icon: UserCircle },
+  { href: '/gymbro/programmes',   label: 'Programmes',   icon: ListVideo },
+  { href: '/gymbro/exercices',    label: 'Exercices',    icon: Dumbbell },
 ];
 
 const NAV_SYS = [
@@ -55,6 +62,15 @@ export default function Sidebar() {
       <nav className="sidebar-nav">
         <span className="section-label sidebar-nav-label">Navigation</span>
         {NAV_MAIN.map(({ href, label, icon: Icon }) => (
+          <Link key={href} href={href} className={`nav-item${isActive(href) ? ' active' : ''}`} aria-current={isActive(href) ? 'page' : undefined}>
+            <Icon size={14} strokeWidth={isActive(href) ? 2.5 : 2} />
+            {label}
+          </Link>
+        ))}
+
+        <div className="divider sidebar-divider" />
+        <span className="section-label sidebar-nav-label">GymBro</span>
+        {NAV_GYMBRO.map(({ href, label, icon: Icon }) => (
           <Link key={href} href={href} className={`nav-item${isActive(href) ? ' active' : ''}`} aria-current={isActive(href) ? 'page' : undefined}>
             <Icon size={14} strokeWidth={isActive(href) ? 2.5 : 2} />
             {label}
