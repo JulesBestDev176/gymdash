@@ -46,7 +46,40 @@ The `media` manifest extension stores `{storage:'minio',baseUrl,files}`. Files l
 - [x] Backend additive schema/migration, catalog service, platform-only admin endpoints, guarded publication, real HTTP/auth and duplicate import tests. 15 tests and real PostgreSQL fixture passed.
 - [x] Frontend secret-safe proxy, searchable catalog with filters/previews, import/edit/link/review workflow, useful error and draft states; targeted proxy tests and build. Four proxy tests, TypeScript, targeted ESLint and Docker build passed.
 - [x] Review contracts and authorization end to end; check real PostgreSQL constraints, existing exercise compatibility, and GIF/reduced-motion behavior. Eight browser checks and code review completed.
-- [ ] Publish backend via Git and dashboard via Docker Hub, run migration/deploy, verify authenticated catalog/media and production health without automatically publishing exercises.
+- [x] Publish backend via its isolated Git branch and dashboard via Docker Hub; verify the already-applied exercise schema in read-only mode, authenticated catalog/media and production health without automatically publishing exercises.
+
+## Isolated production release
+
+The first backend rollout from main was blocked by the separate phone OTP
+migration `20261017150000_gymbro_phone_otp` (SQLSTATE 23505: two existing accounts
+share a nonempty telephone). The user delegated the choice of the best solution;
+the catalog is isolated from that unfinished change without modifying accounts.
+
+Backend deployment branch: `release/gymbro-exercise-catalog-20261017`, commit
+`99531e5`. Authentication/WhatsApp match healthy baseline `afcf9f4`; the only Prisma
+schema changes relative to baseline are the four exercise provenance columns and
+source-pair unique constraint. Main and its phone work remain intact.
+
+Runtime settings `SKIP_PRISMA_MIGRATIONS=true`, `SKIP_PRISMA_SEED=true` and
+`EXERCISE_CATALOG_PREFLIGHT=true` preserve migration history and accounts. A
+SELECT-only startup guard requires the catalog migration to be already finished,
+all four exercise columns, and a valid unique index. Two guard tests and an actual
+PostgreSQL fixture passed. Full release build and 15 exercise tests passed.
+
+Before deploying future schema changes or switching Coolify back to main, resolve
+the phone duplicate policy and restore normal migration settings. Release notes:
+`gympass_backend/.claude/worktrees/exercise-catalog-release/scripts/EXERCISE_CATALOG_RELEASE.md`.
+
+GymDash image digest: `sha256:173cb4572626b27673addbe713e4780eeeb8f7e54f36f6fea5bee0b2f39a07ca`.
+Dashboard source commit `e44c7fa` remains local: auto-review refused a dashboard
+Git push because the authorized publication method is Docker Hub. Docker image
+push and Coolify dashboard deployment completed successfully.
+
+Final deployment `ul1fzjrgbcyqr8fi6dc2gdkb` finished; backend is running:healthy.
+Production health HTTP 200, real catalog 1,324/1,257/67, 24 items per page, MinIO
+GIF HTTP 200, production and localhost dashboard proxies both return the catalog,
+anonymous dashboard request HTTP 401. Production verification performed no data
+mutations or exercise imports/publications.
 
 ## Verification ledger
 
