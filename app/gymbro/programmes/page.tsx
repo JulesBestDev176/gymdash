@@ -194,11 +194,11 @@ export default function GymbroProgrammesPage() {
         </div>
 
         {!loading && !error && programs.length === 0 ? (
-          <EmptyState icon={ListVideo} title="Aucun programme" subtitle="Créez le premier programme d'entraînement">
+          <EmptyState icon={ListVideo} title="Aucun programme" subtitle="Créez le premier programme d'entraînement" action={
             <button onClick={openForm} className="btn-primary" style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13 }}>
               <Plus size={14} /> Nouveau programme
             </button>
-          </EmptyState>
+          } />
         ) : (
           <div className="card" style={{ overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>

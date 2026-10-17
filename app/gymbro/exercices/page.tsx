@@ -162,11 +162,11 @@ export default function GymbroExercicesPage() {
         </div>
 
         {!loading && !error && exercises.length === 0 ? (
-          <EmptyState icon={Dumbbell} title="Aucun exercice" subtitle="Créez le premier exercice de la bibliothèque">
+          <EmptyState icon={Dumbbell} title="Aucun exercice" subtitle="Créez le premier exercice de la bibliothèque" action={
             <button onClick={openForm} className="btn-primary" style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13 }}>
               <Plus size={14} /> Nouvel exercice
             </button>
-          </EmptyState>
+          } />
         ) : (
           <div className="card" style={{ overflow: 'hidden' }}>
             {/* Toolbar */}

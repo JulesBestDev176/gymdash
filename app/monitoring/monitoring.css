@@ -1,0 +1,22 @@
+.monitor-grid-4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.monitor-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.monitor-panel{padding:20px;min-width:0}
+.monitor-panel-title{font-size:14px;font-weight:700;color:var(--fg);margin-bottom:5px}
+.monitor-sub{font-size:12px;color:var(--fg3);line-height:1.6}
+.monitor-empty{padding:38px 18px;text-align:center;color:var(--fg3);font-size:13px;line-height:1.7}
+.monitor-tabs{display:flex;gap:6px;overflow-x:auto;border-bottom:1px solid var(--border);padding-bottom:10px}
+.monitor-tab{display:flex;align-items:center;gap:7px;padding:9px 13px;border:1px solid transparent;background:transparent;color:var(--fg3);border-radius:8px;cursor:pointer;white-space:nowrap;font-size:12px;font-weight:600}
+.monitor-tab[aria-selected=true]{background:var(--accent-dim);color:var(--accent);border-color:rgba(181,255,45,.2)}
+.monitor-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)}
+.monitor-row:last-child{border-bottom:none}
+.monitor-number{font-family:var(--font-geist-mono,monospace);font-variant-numeric:tabular-nums}
+.monitor-alert{display:flex;align-items:flex-start;gap:12px;padding:15px 17px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+.monitor-table-wrap{overflow-x:auto}
+.monitor-table-wrap table{min-width:720px}
+.monitor-meter{height:5px;border-radius:99px;background:var(--border);overflow:hidden;margin-top:12px}
+.monitor-meter>span{display:block;height:100%;border-radius:99px}
+.monitor-header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.monitor-period{padding:6px 10px;border:1px solid var(--border2);background:var(--card);color:var(--fg3);border-radius:7px;cursor:pointer;font-size:12px}
+.monitor-period[aria-pressed=true]{color:var(--accent);border-color:rgba(181,255,45,.4)}
+@media(max-width:1000px){.monitor-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.monitor-grid-2{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:560px){.monitor-panel{padding:15px}.monitor-grid-4{gap:8px}.monitor-row{align-items:flex-start;flex-wrap:wrap}.monitor-header-actions{width:100%}}

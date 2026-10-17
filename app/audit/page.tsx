@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Shell from '@/components/shell';
+import { authenticatedFetch } from '@/lib/authenticated-fetch';
 import { getAuditEntries, AuditEntry } from '@/lib/audit';
 import { ClipboardList, Trash2, Activity, LogIn, PlusCircle, RefreshCw, Trash, ToggleLeft } from 'lucide-react';
 
@@ -33,7 +34,7 @@ function getActionKey(action: string): ActionKey {
   return 'UPDATE';
 }
 
-function fmtDate(ts: number) {
+function fmtDate(ts: AuditEntry['ts']) {
   return new Date(ts).toLocaleString('fr-FR', {
     day: '2-digit', month: '2-digit', year: '2-digit',
     hour: '2-digit', minute: '2-digit',
@@ -48,7 +49,7 @@ export default function AuditPage() {
 
   useEffect(() => {
     setEntries(getAuditEntries());
-    fetch('/api/monitoring')
+    authenticatedFetch('/api/monitoring')
       .then((r) => r.json())
       .then((data) => {
         if (data?.services) {
@@ -61,7 +62,7 @@ export default function AuditPage() {
             const st = s.status.toLowerCase();
             return st.includes('running') && st !== 'running:healthy' && st !== 'running';
           }).length;
-          setServiceSummary({ total, up, down: total - up - degraded });
+          setServiceSummary({ total, up, degraded, down: total - up - degraded });
         }
       })
       .catch(() => {})

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Building2, Users, CreditCard,
   Activity, ClipboardList, UserCheck, LogOut,
-  Dumbbell, ListVideo, UserCircle,
+  Dumbbell, ListVideo, UserCircle, MessageCircle,
 } from 'lucide-react';
 
 const NAV_MAIN = [
@@ -23,6 +23,7 @@ const NAV_GYMBRO = [
 ];
 
 const NAV_SYS = [
+  { href: '/whatsapp',   label: 'WhatsApp',      icon: MessageCircle },
   { href: '/monitoring', label: 'Monitoring',    icon: Activity },
   { href: '/audit',      label: 'Audit',         icon: ClipboardList },
 ];
