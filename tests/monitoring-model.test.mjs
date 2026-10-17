@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { serviceState, thresholdAlerts } from '../lib/monitoring-model.ts';
+import { serviceState, thresholdAlerts, containerMetadataAvailable } from '../lib/monitoring-model.ts';
 
 test('running unknown is healthy only after a successful HTTP probe', () => {
   assert.equal(serviceState('running:unknown', true), 'up');
@@ -10,6 +10,12 @@ test('running unknown is healthy only after a successful HTTP probe', () => {
 });
 test('missing resource metrics never produce fake healthy zeroes', () => {
   assert.deepEqual(thresholdAlerts(null, []), []);
+});
+test('missing Docker metadata is unknown, including empty failed snapshots', () => {
+  assert.equal(containerMetadataAvailable(null), false);
+  assert.equal(containerMetadataAvailable({ containers: [], collection: { errors: ['Docker metadata unavailable'] } }), false);
+  assert.equal(containerMetadataAvailable({ containers: [{ id: 'known' }], collection: { errors: [] } }), true);
+  assert.equal(containerMetadataAvailable({ containers: [{ id: 'stale' }], collection: { errors: ['Docker unavailable'] } }), false);
 });
 test('thresholds generate resource and real API alerts', () => {
   const alerts = thresholdAlerts({ cpuPercent: 91, memoryPercent: 50, diskPercent: 89 }, [

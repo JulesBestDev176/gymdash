@@ -30,6 +30,10 @@ export interface MonitoringData {
   backups: BackupInfo[] | null; partialErrors: string[]; hours: number;
 }
 
+export function containerMetadataAvailable(snapshot: { containers: unknown[]; collection: { errors: string[] } } | null): boolean {
+  return !!snapshot?.containers.length && !snapshot.collection.errors.some(error => /docker|conteneur/i.test(error));
+}
+
 export function serviceState(raw: string, httpHealthy: boolean | null): ServiceState {
   const value = raw.toLowerCase();
   if (!value.startsWith('running') && value !== 'up') return 'down';

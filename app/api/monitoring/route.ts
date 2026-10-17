@@ -1,6 +1,6 @@
 import { requireAdmin } from '@/lib/server/admin-auth';
 import { coolifyJson, RESOURCE_IDS } from '@/lib/server/coolify';
-import { serviceState, thresholdAlerts } from '@/lib/monitoring-model';
+import { containerMetadataAvailable, serviceState, thresholdAlerts } from '@/lib/monitoring-model';
 import type { BackupInfo, CollectorSnapshot, MonitoringData, MonitoringService, SecurityCheck } from '@/lib/monitoring-model';
 
 export const dynamic = 'force-dynamic';
@@ -72,13 +72,15 @@ export async function GET(request: Request) {
     }
     return { uuid, enabled: backup.enabled === true || backup.enabled === 1, frequency: String(backup.frequency ?? 'Non précisée'), lastStatus, lastAt };
   })) : null;
+  const containerMetadataKnown = containerMetadataAvailable(metrics);
   const security: SecurityCheck[] = [
     { id: 'auth', title: 'Accès administrateur', status: 'ok', detail: 'Session vérifiée par le backend pour chaque lecture et action.' },
     { id: 'database', title: 'Exposition PostgreSQL', status: database ? (database.is_public ? 'warning' : 'ok') : 'unknown', detail: database ? (database.is_public ? 'La base possède un port public.' : 'Base accessible uniquement sur le réseau privé.') : 'État indisponible.' },
     { id: 'backups', title: 'Sauvegardes PostgreSQL', status: backups ? (backups.some(b => b.enabled) ? 'ok' : 'warning') : 'unknown', detail: backups ? (backups.some(b => b.enabled) ? 'Planification présente ; contrôler les exécutions ci-dessous.' : 'Aucune sauvegarde automatique active.') : 'Configuration indisponible.' },
-    { id: 'privileged', title: 'Conteneurs privilégiés', status: metrics ? (metrics.containers.some(c => c.privileged) ? 'warning' : 'ok') : 'unknown', detail: metrics ? `${metrics.containers.filter(c => c.privileged).length} conteneur(s) privilégié(s) parmi les services suivis.` : 'Collecteur indisponible.' },
-    { id: 'root', title: 'Utilisateur des conteneurs', status: metrics ? (metrics.containers.some(c => !c.user || c.user === '0' || c.user === 'root') ? 'warning' : 'ok') : 'unknown', detail: metrics ? `${metrics.containers.filter(c => !c.user || c.user === '0' || c.user === 'root').length} conteneur(s) configuré(s) avec l’utilisateur root par défaut.` : 'Collecteur indisponible.' },
-    { id: 'https', title: 'Transport HTTPS des applications', status: 'ok', detail: 'Sondes HTTPS avec validation des certificats ; la disponibilité est indiquée pour chaque service.' },
+    { id: 'privileged', title: 'Conteneurs privilégiés', status: containerMetadataKnown ? (metrics!.containers.some(c => c.privileged) ? 'warning' : 'ok') : 'unknown', detail: containerMetadataKnown ? `${metrics!.containers.filter(c => c.privileged).length} conteneur(s) privilégié(s) parmi les services suivis.` : 'Métadonnées des conteneurs indisponibles.' },
+    { id: 'root', title: 'Utilisateur des conteneurs', status: containerMetadataKnown ? (metrics!.containers.some(c => !c.user || c.user === '0' || c.user === 'root') ? 'warning' : 'ok') : 'unknown', detail: containerMetadataKnown ? `${metrics!.containers.filter(c => !c.user || c.user === '0' || c.user === 'root').length} conteneur(s) configuré(s) avec l’utilisateur root par défaut.` : 'Métadonnées des conteneurs indisponibles.' },
+    { id: 'https', title: 'Transport HTTPS des applications', status: services.filter(s => s.fqdn).every(s => s.httpStatus != null && s.httpStatus < 400) ? 'ok' : 'unknown', detail: 'Sondes HTTPS avec validation des certificats ; un service non joignable ne permet pas de confirmer son transport.' },
+    { id: 'control-transport', title: 'Transport de l’API Coolify', status: process.env.COOLIFY_BASE_URL?.startsWith('https://') ? 'ok' : 'warning', detail: process.env.COOLIFY_BASE_URL?.startsWith('https://') ? 'Connexion de contrôle chiffrée.' : 'L’API de contrôle utilise HTTP. Prévoir HTTPS ou un réseau privé pour protéger son jeton.' },
   ];
   const generated = thresholdAlerts(metrics?.server ?? null, metrics?.api.routes ?? []);
   const alerts = [...generated, ...(metrics?.alerts ?? [])];
