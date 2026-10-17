@@ -1,382 +1,82 @@
 'use client';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+/* eslint-disable @next/next/no-img-element -- Native images allow GIF playback and poster switching without an external image optimizer. */
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Shell from '@/components/shell';
-import EmptyState from '@/components/ui/empty-state';
-import Spinner from '@/components/ui/spinner';
-import { adminApi } from '@/lib/api';
-import { Dumbbell, Search, AlertCircle, RefreshCw, CheckCircle, XCircle, Plus, X } from 'lucide-react';
+import { authenticatedFetch } from '@/lib/authenticated-fetch';
+import { AlertCircle, ArrowLeft, ArrowRight, Check, Dumbbell, Film, Link2, Pause, Play, Plus, Search, X } from 'lucide-react';
+import './exercises.css';
+const s = {activeTab: 'exercise-activeTab', card: 'exercise-card', cardBody: 'exercise-cardBody', check: 'exercise-check', detailGrid: 'exercise-detailGrid', detailText: 'exercise-detailText', dialog: 'exercise-dialog', dialogHeader: 'exercise-dialogHeader', dialogInner: 'exercise-dialogInner', discover: 'exercise-discover', editForm: 'exercise-editForm', empty: 'exercise-empty', exerciseRow: 'exercise-exerciseRow', eyebrow: 'exercise-eyebrow', field: 'exercise-field', fieldPair: 'exercise-fieldPair', filters: 'exercise-filters', footer: 'exercise-footer', grid: 'exercise-grid', group: 'exercise-group', header: 'exercise-header', hint: 'exercise-hint', imported: 'exercise-imported', list: 'exercise-list', mediaBadge: 'exercise-mediaBadge', mini: 'exercise-mini', missing: 'exercise-missing', motion: 'exercise-motion', muted: 'exercise-muted', noMedia: 'exercise-noMedia', notice: 'exercise-notice', pagination: 'exercise-pagination', play: 'exercise-play', preview: 'exercise-preview', resultLine: 'exercise-resultLine', reviewNote: 'exercise-reviewNote', root: 'exercise-root', rowName: 'exercise-rowName', search: 'exercise-search', skeleton: 'exercise-skeleton', source: 'exercise-source', stats: 'exercise-stats', tabs: 'exercise-tabs', tags: 'exercise-tags', thumbnail: 'exercise-thumbnail'};
 
-interface GymbroExercise {
-  id: string; nomFr: string; descriptionFr?: string;
-  groupeMusculaire: string; equipementRequis: string;
-  difficulte?: string; actif: boolean; createdAt: string;
+interface Exercise {
+  id: string; nomFr: string; updatedAt: string; descriptionFr?: string; groupeMusculaire: string; equipementRequis: string;
+  difficulte?: string; actif: boolean; instructionsFrJson?: string; musclesPrimairesJson?: string; musclesSecondairesJson?: string;
+  animationUrl?: string | null; animationPosterUrl?: string | null; mediaSource?: string | null; mediaSourceId?: string | null;
 }
-
-interface CreateExerciseForm {
-  nomFr: string;
-  groupeMusculaire: string;
-  equipementRequis: string;
-  difficulte: string;
-  descriptionFr: string;
+interface Item {
+  sourceId: string; nameOriginal: string; instructionsFr: string[]; groupeMusculaire: string; musclesPrimaires: string[];
+  musclesSecondaires: string[]; equipementRequis: string; hasAnimation: boolean; animationUrl: string | null; posterUrl: string | null; importedExerciseId: string | null;
 }
-
-const FORM_EMPTY: CreateExerciseForm = {
-  nomFr: '', groupeMusculaire: '', equipementRequis: '', difficulte: '', descriptionFr: '',
-};
-
-const GROUPES = [
-  'Pectoraux', 'Dos', 'Épaules', 'Biceps', 'Triceps', 'Avant-bras',
-  'Abdominaux', 'Obliques', 'Quadriceps', 'Ischio-jambiers', 'Fessiers',
-  'Mollets', 'Cardio', 'Plein corps',
-];
-const EQUIPEMENTS = [
-  'Aucun (poids de corps)', 'Haltères', 'Barre', 'Kettlebell', 'Câbles',
-  'Machine guidée', 'Élastique', 'TRX', 'Banc', 'Poulie haute',
-];
-const DIFFICULTES = ['Débutant', 'Intermédiaire', 'Avancé'];
-
-function difficulteBadge(d?: string) {
-  if (!d) return null;
-  const val = d.toLowerCase();
-  if (val.includes('débutant') || val === 'debutant')           return 'badge badge-success';
-  if (val.includes('intermédiaire') || val === 'intermediaire') return 'badge badge-warning';
-  if (val.includes('avancé') || val === 'avance')               return 'badge badge-danger';
-  return 'badge badge-neutral';
+interface Catalog { items: Item[]; total: number; filters: { groups: string[]; equipment: string[] }; stats: { total: number; animated: number; withoutAnimation: number } }
+type Form = { nomFr: string; descriptionFr: string; groupeMusculaire: string; equipementRequis: string; difficulte: string; instructions: string; primary: string; secondary: string };
+const empty: Form = { nomFr: '', descriptionFr: '', groupeMusculaire: '', equipementRequis: '', difficulte: '', instructions: '', primary: '', secondary: '' };
+const lines = (v: string) => v.split('\n').map(v => v.trim()).filter(Boolean);
+function parse(v?: string) { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a.filter(v => typeof v === 'string').join('\n') : ''; } catch { return ''; } }
+function toForm(e: Exercise): Form { return { nomFr: e.nomFr, descriptionFr: e.descriptionFr || '', groupeMusculaire: e.groupeMusculaire, equipementRequis: e.equipementRequis, difficulte: e.difficulte || '', instructions: parse(e.instructionsFrJson), primary: parse(e.musclesPrimairesJson), secondary: parse(e.musclesSecondairesJson) }; }
+async function api<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
+  const r = await authenticatedFetch(`/api/exercises/${path}`, { method, signal, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+  const data = await r.json().catch(() => ({})); if (!r.ok) throw Error(data.error || 'Impossible de traiter la demande.'); return data;
 }
-
-const PAGE_SIZE = 25;
-
-export default function GymbroExercicesPage() {
-  const [exercises, setExercises] = useState<GymbroExercise[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState('');
-  const [search, setSearch]       = useState('');
-  const [page, setPage]           = useState(1);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
-
-  // Creation form
-  const [showForm, setShowForm]   = useState(false);
-  const [form, setForm]           = useState<CreateExerciseForm>(FORM_EMPTY);
-  const [formError, setFormError] = useState('');
-  const [saving, setSaving]       = useState(false);
-
-  const load = useCallback(() => {
-    setLoading(true); setError('');
-    adminApi.get('/api/v1/gymbro/exercises/admin/all')
-      .then((r) => setExercises(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setError('Impossible de charger les données'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return exercises;
-    return exercises.filter((e) =>
-      e.nomFr.toLowerCase().includes(q) ||
-      e.groupeMusculaire.toLowerCase().includes(q)
-    );
-  }, [exercises, search]);
-
-  const totalPages  = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const slice       = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
-  const nbActifs = useMemo(() => exercises.filter((e) => e.actif).length, [exercises]);
-
-  async function toggleExercise(e: GymbroExercise) {
-    setTogglingId(e.id);
-    try {
-      await adminApi.patch(`/api/v1/gymbro/exercises/admin/${e.id}/toggle`);
-      setExercises((prev) => prev.map((x) => x.id === e.id ? { ...x, actif: !x.actif } : x));
-    } catch { /* ignore */ }
-    finally { setTogglingId(null); }
+function Preview({ url, poster, name, onViewed }: { url?: string | null; poster?: string | null; name: string; onViewed: () => void }) {
+  const [playing, setPlaying] = useState(false); const [failed, setFailed] = useState(false); const [reduced, setReduced] = useState(false);
+  useEffect(() => { const m = window.matchMedia('(prefers-reduced-motion: reduce)'); const update = () => { setReduced(m.matches); if (m.matches) setPlaying(false); }; update(); m.addEventListener('change', update); return () => m.removeEventListener('change', update); }, []);
+  return <div className={s.preview}>{url && !failed ? <><img src={playing ? url : poster || undefined} alt={`Démonstration : ${name}`} onError={() => { setFailed(true); setPlaying(false); }} onLoad={() => { if (playing) onViewed(); }} /><button type="button" className={s.play} onClick={() => setPlaying(v => !v)}>{playing ? <Pause size={15} /> : <Play size={15} />}{playing ? 'Mettre en pause' : 'Lire le mouvement'}</button>{reduced && <span className={s.motion}>Lecture manuelle · mouvement réduit</span>}</> : <div className={s.noMedia}><Dumbbell size={36} /><strong>{failed ? 'Animation indisponible' : 'Aucune animation disponible'}</strong><span>{failed ? 'Actualisez pour réessayer.' : 'Ce mouvement ne peut pas encore être publié.'}</span></div>}</div>;
+}
+export default function ExercisesPage() {
+  const [tab, setTab] = useState<'catalog' | 'mine'>('catalog'); const [exercises, setExercises] = useState<Exercise[]>([]); const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [search, setSearch] = useState(''); const [query, setQuery] = useState(''); const [group, setGroup] = useState(''); const [equipment, setEquipment] = useState(''); const [animation, setAnimation] = useState(''); const [page, setPage] = useState(1); const [revision, setRevision] = useState(0);
+  const [loadedKey, setLoadedKey] = useState(''); const [mineRevision, setMineRevision] = useState(-1);
+  const requestKey = JSON.stringify([query, group, equipment, animation, page, revision]); const loading = loadedKey !== requestKey; const mineLoading = mineRevision !== revision; const [error, setError] = useState(''); const [mineError, setMineError] = useState(''); const [catalogError, setCatalogError] = useState(''); const [notice, setNotice] = useState(''); const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState<Item | null>(null); const [editing, setEditing] = useState<Exercise | null>(null); const [creating, setCreating] = useState(false); const [form, setForm] = useState<Form>(empty); const [name, setName] = useState(''); const [target, setTarget] = useState<Exercise | null>(null);
+  const [viewed, setViewed] = useState(false); const [reviewed, setReviewed] = useState(false); const [matched, setMatched] = useState(false); const [dialogError, setDialogError] = useState(''); const dialog = useRef<HTMLDialogElement>(null);
+  const opened = Boolean(selected || editing || creating); const dirty = Boolean(editing && JSON.stringify(form) !== JSON.stringify(toForm(editing)));
+  useEffect(() => { const t = setTimeout(() => { setQuery(search); setPage(1); }, 300); return () => clearTimeout(t); }, [search]);
+  useEffect(() => { const a = new AbortController(); api<Exercise[]>('admin/all', 'GET', undefined, a.signal).then(data => { if (!a.signal.aborted) { setExercises(data); setMineError(''); } }).catch(e => { if (!a.signal.aborted) setMineError(e.message); }).finally(() => { if (!a.signal.aborted) setMineRevision(revision); }); return () => a.abort(); }, [revision]);
+  useEffect(() => {
+    const a = new AbortController(); const p = new URLSearchParams({ page: String(page) });
+    if (query) p.set('q', query); if (group) p.set('group', group); if (equipment) p.set('equipment', equipment); if (animation) p.set('hasAnimation', animation);
+    api<Catalog>(`admin/catalog?${p}`, 'GET', undefined, a.signal).then(data => { if (!a.signal.aborted) { setCatalog(data); setCatalogError(''); } }).catch(e => { if (!a.signal.aborted) setCatalogError(e.message); }).finally(() => { if (!a.signal.aborted) setLoadedKey(requestKey); }); return () => a.abort();
+  }, [query, group, equipment, animation, page, revision, requestKey]);
+  useEffect(() => { if (opened) dialog.current?.showModal(); else dialog.current?.close(); }, [opened]);
+  function close() { if (!busy) { setSelected(null); setEditing(null); setCreating(false); setDialogError(''); } }
+  function reset() { setViewed(false); setReviewed(false); setMatched(false); setDialogError(''); }
+  function openEdit(e: Exercise) { reset(); setSelected(null); setCreating(false); setEditing(e); setForm(toForm(e)); }
+  async function mutate(action: () => Promise<void>) { setBusy(true); setDialogError(''); setError(''); setNotice(''); try { await action(); setRevision(v => v + 1); } catch (e) { const msg = e instanceof Error ? e.message : 'Échec de la modification'; if (opened) setDialogError(msg); else setError(msg); } finally { setBusy(false); } }
+  async function importItem() { if (!selected) return; await mutate(async () => { const e = await api<Exercise>('admin/import', 'POST', { sourceId: selected.sourceId, nomFr: name.trim() }); openEdit(e); setTab('mine'); setTarget(null); setNotice('Exercice ajouté en brouillon. Vérifiez les consignes avant publication.'); }); }
+  async function attach() { if (!selected || !target || !matched || !viewed) return; await mutate(async () => { const e = await api<Exercise>(`admin/${encodeURIComponent(target.id)}/source`, 'PATCH', { sourceId: selected.sourceId }); setTarget(null); setTab('mine'); openEdit(e); setNotice('Animation liée. Vérifiez cet exercice avant de le publier.'); }); }
+  async function save() {
+    if (!form.nomFr.trim() || !form.groupeMusculaire.trim() || !form.equipementRequis.trim()) { setDialogError('Renseignez le nom, le groupe musculaire et l’équipement.'); return; }
+    await mutate(async () => { const payload = { nomFr: form.nomFr.trim(), descriptionFr: form.descriptionFr.trim(), groupeMusculaire: form.groupeMusculaire.trim(), equipementRequis: form.equipementRequis.trim(), difficulte: form.difficulte, instructionsFrJson: JSON.stringify(lines(form.instructions)), musclesPrimairesJson: JSON.stringify(lines(form.primary)), musclesSecondairesJson: JSON.stringify(lines(form.secondary)) }; const e = await api<Exercise>(editing ? `admin/${encodeURIComponent(editing.id)}` : 'admin', editing ? 'PATCH' : 'POST', payload); openEdit(e); setNotice('Modifications enregistrées.'); });
   }
-
-  function openForm() { setForm(FORM_EMPTY); setFormError(''); setShowForm(true); }
-  function closeForm() { if (!saving) { setShowForm(false); setFormError(''); } }
-
-  async function submitForm() {
-    if (!form.nomFr.trim()) { setFormError('Le nom est obligatoire.'); return; }
-    if (!form.groupeMusculaire) { setFormError('Le groupe musculaire est obligatoire.'); return; }
-    if (!form.equipementRequis) { setFormError('L\'équipement est obligatoire.'); return; }
-    setSaving(true); setFormError('');
-    try {
-      const payload: any = {
-        nomFr: form.nomFr.trim(),
-        groupeMusculaire: form.groupeMusculaire,
-        equipementRequis: form.equipementRequis,
-        musclesPrimairesJson: JSON.stringify([form.groupeMusculaire]),
-      };
-      if (form.difficulte)   payload.difficulte = form.difficulte;
-      if (form.descriptionFr.trim()) payload.descriptionFr = form.descriptionFr.trim();
-      const res = await adminApi.post('/api/v1/gymbro/exercises/admin', payload);
-      setExercises((prev) => [res.data, ...prev]);
-      setShowForm(false);
-    } catch (e: any) {
-      setFormError(e?.response?.data?.message ?? 'Erreur lors de la création');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Shell>
-      <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <h1 className="page-title">Exercices GymBro</h1>
-            <p className="page-sub">Bibliothèque d'exercices de l'application</p>
-          </div>
-          <button onClick={openForm} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, padding: '9px 16px', whiteSpace: 'nowrap' }}>
-            <Plus size={14} /> Nouvel exercice
-          </button>
-        </div>
-
-        {error && (
-          <div className="banner-error" role="alert">
-            <AlertCircle size={14} />
-            <span style={{ flex: 1 }}>{error}</span>
-            <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600 }}>
-              <RefreshCw size={12} /> Réessayer
-            </button>
-          </div>
-        )}
-
-        {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, maxWidth: 360 }}>
-          <div className="card-accent" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span className="section-label">Total</span>
-              <span style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--accent-dim)', border: '1px solid rgba(181,255,45,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}><Dumbbell size={13} /></span>
-            </div>
-            {loading ? <div className="skeleton" style={{ height: 28, width: 60 }} /> : <div className="stat-value stat-value-accent" style={{ fontSize: 28 }}>{exercises.length}</div>}
-          </div>
-          <div className="card" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <span className="section-label">Actifs</span>
-            {loading ? <div className="skeleton" style={{ height: 28, width: 50 }} /> : <div className="stat-value" style={{ fontSize: 28, color: 'var(--success)' }}>{nbActifs}</div>}
-          </div>
-        </div>
-
-        {!loading && !error && exercises.length === 0 ? (
-          <EmptyState icon={Dumbbell} title="Aucun exercice" subtitle="Créez le premier exercice de la bibliothèque" action={
-            <button onClick={openForm} className="btn-primary" style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13 }}>
-              <Plus size={14} /> Nouvel exercice
-            </button>
-          } />
-        ) : (
-          <div className="card" style={{ overflow: 'hidden' }}>
-            {/* Toolbar */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ position: 'relative', flex: 1, minWidth: 180, maxWidth: 300 }}>
-                <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg3)', pointerEvents: 'none' }} />
-                <input type="search" className="input-base" placeholder="Nom, groupe musculaire…" value={search}
-                  onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                  style={{ paddingLeft: 30, fontSize: 12.5, background: 'var(--bg2)', border: '1px solid var(--border2)' }} />
-              </div>
-              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--fg3)', whiteSpace: 'nowrap' }}>
-                <span className="num" style={{ color: 'var(--fg2)', fontWeight: 600 }}>{filtered.length}</span> exercice{filtered.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-
-            {loading ? (
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '32px 1fr 140px 140px 90px 70px 110px', gap: 16, padding: '14px 20px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
-                    {Array.from({ length: 7 }).map((_, j) => (
-                      <div key={j} className="skeleton" style={{ height: 11, width: j === 1 ? 150 : 80 }} />
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ) : filtered.length === 0 ? (
-              <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--fg3)', fontSize: 13 }}>
-                Aucun exercice ne correspond à la recherche
-              </div>
-            ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 36 }}>#</th>
-                    <th>Exercice</th>
-                    <th>Groupe musculaire</th>
-                    <th>Équipement</th>
-                    <th>Difficulté</th>
-                    <th>Statut</th>
-                    <th style={{ width: 110 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {slice.map((e, i) => {
-                    const diffCls = difficulteBadge(e.difficulte);
-                    return (
-                      <tr key={e.id}>
-                        <td style={{ color: 'var(--fg3)', fontSize: 12 }}>{(currentPage - 1) * PAGE_SIZE + i + 1}</td>
-                        <td style={{ fontWeight: 600 }}>{e.nomFr}</td>
-                        <td style={{ fontSize: 13, color: 'var(--fg2)' }}>{e.groupeMusculaire}</td>
-                        <td style={{ fontSize: 13, color: 'var(--fg2)' }}>{e.equipementRequis}</td>
-                        <td>
-                          {e.difficulte && diffCls
-                            ? <span className={diffCls} style={{ fontSize: 10 }}>{e.difficulte}</span>
-                            : <span style={{ color: 'var(--fg3)', fontSize: 12 }}>—</span>}
-                        </td>
-                        <td>
-                          <span className={e.actif ? 'badge badge-success' : 'badge badge-neutral'} style={{ fontSize: 10 }}>
-                            {e.actif ? 'Actif' : 'Inactif'}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            onClick={() => toggleExercise(e)}
-                            disabled={togglingId === e.id}
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: 5,
-                              padding: '5px 10px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
-                              background: e.actif ? 'var(--danger-dim)' : 'var(--success-dim)',
-                              color: e.actif ? 'var(--danger)' : 'var(--success)',
-                              opacity: togglingId === e.id ? 0.5 : 1,
-                            }}
-                          >
-                            {togglingId === e.id ? <Spinner size="sm" /> : e.actif ? <XCircle size={12} /> : <CheckCircle size={12} />}
-                            {e.actif ? 'Désactiver' : 'Activer'}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-
-            {totalPages > 1 && !loading && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
-                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }}>← Précédent</button>
-                <span style={{ fontSize: 12, color: 'var(--fg3)' }}>Page <span className="num" style={{ color: 'var(--fg2)', fontWeight: 700 }}>{currentPage}</span> / <span className="num">{totalPages}</span></span>
-                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }}>Suivant →</button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Creation modal ── */}
-      {showForm && (
-        <div
-          role="dialog" aria-modal="true" aria-label="Nouvel exercice"
-          onClick={(e) => { if (e.target === e.currentTarget) closeForm(); }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 200,
-            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div style={{
-            background: 'var(--card)', border: '1px solid var(--border2)',
-            borderRadius: 16, width: '100%', maxWidth: 520,
-            boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
-            animation: 'fadeUp 0.18s ease both',
-          }}>
-            {/* Modal header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--accent-dim)', border: '1px solid rgba(181,255,45,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
-                  <Dumbbell size={15} />
-                </span>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--fg)' }}>Nouvel exercice</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--fg3)', marginTop: 1 }}>Ajouter à la bibliothèque GymBro</div>
-                </div>
-              </div>
-              <button onClick={closeForm} disabled={saving} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg3)', padding: 6, borderRadius: 7, display: 'flex' }}>
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Modal body */}
-            <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {formError && (
-                <div style={{ background: 'var(--danger-dim)', border: '1px solid rgba(255,68,85,0.2)', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <AlertCircle size={13} />{formError}
-                </div>
-              )}
-
-              <div>
-                <label className="section-label" style={{ display: 'block', marginBottom: 6 }}>
-                  Nom de l'exercice <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <input
-                  className="input-base" placeholder="ex : Développé couché barre"
-                  value={form.nomFr} onChange={(e) => setForm((f) => ({ ...f, nomFr: e.target.value }))}
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label className="section-label" style={{ display: 'block', marginBottom: 6 }}>
-                    Groupe musculaire <span style={{ color: 'var(--danger)' }}>*</span>
-                  </label>
-                  <select className="input-base" style={{ width: '100%' }} value={form.groupeMusculaire} onChange={(e) => setForm((f) => ({ ...f, groupeMusculaire: e.target.value }))}>
-                    <option value="">Sélectionner…</option>
-                    {GROUPES.map((g) => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="section-label" style={{ display: 'block', marginBottom: 6 }}>
-                    Équipement <span style={{ color: 'var(--danger)' }}>*</span>
-                  </label>
-                  <select className="input-base" style={{ width: '100%' }} value={form.equipementRequis} onChange={(e) => setForm((f) => ({ ...f, equipementRequis: e.target.value }))}>
-                    <option value="">Sélectionner…</option>
-                    {EQUIPEMENTS.map((eq) => <option key={eq} value={eq}>{eq}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="section-label" style={{ display: 'block', marginBottom: 6 }}>Difficulté</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {DIFFICULTES.map((d) => (
-                    <button
-                      key={d} type="button"
-                      onClick={() => setForm((f) => ({ ...f, difficulte: f.difficulte === d ? '' : d }))}
-                      style={{
-                        flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                        border: form.difficulte === d ? '1px solid var(--accent)' : '1px solid var(--border2)',
-                        background: form.difficulte === d ? 'var(--accent-dim)' : 'var(--bg2)',
-                        color: form.difficulte === d ? 'var(--accent)' : 'var(--fg2)',
-                        transition: 'all 0.12s',
-                      }}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="section-label" style={{ display: 'block', marginBottom: 6 }}>Description (optionnel)</label>
-                <textarea
-                  className="input-base" placeholder="Instructions d'exécution, conseils…"
-                  rows={3} value={form.descriptionFr} onChange={(e) => setForm((f) => ({ ...f, descriptionFr: e.target.value }))}
-                  style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
-                />
-              </div>
-            </div>
-
-            {/* Modal footer */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 22px', borderTop: '1px solid var(--border)' }}>
-              <button onClick={closeForm} disabled={saving} className="btn-ghost" style={{ fontSize: 13, padding: '8px 16px' }}>Annuler</button>
-              <button onClick={submitForm} disabled={saving} className="btn-primary" style={{ fontSize: 13, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 7 }}>
-                {saving ? <><Spinner size="sm" /> Création…</> : <><Plus size={13} /> Créer l'exercice</>}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </Shell>
-  );
+  async function toggle(e: Exercise) { await mutate(async () => { const result = await api<Exercise>(`admin/${encodeURIComponent(e.id)}/toggle`, 'PATCH', e.actif ? {} : { reviewed: true, expectedUpdatedAt: e.updatedAt }); openEdit(result); setNotice(result.actif ? 'Exercice publié dans GymBro.' : 'Exercice désactivé.'); }); }
+  const mine = useMemo(() => exercises.filter(e => `${e.nomFr} ${e.groupeMusculaire} ${e.equipementRequis}`.toLowerCase().includes(query.toLowerCase()) && (!group || e.groupeMusculaire === group) && (!equipment || e.equipementRequis === equipment) && (!animation || Boolean(e.animationUrl) === (animation === 'true'))), [exercises, query, group, equipment, animation]);
+  const activeError = error || (tab === 'catalog' ? catalogError : mineError);
+  const pages = Math.max(1, Math.ceil((tab === 'catalog' ? catalog?.total || 0 : mine.length) / 24)); const current = Math.min(page, pages); const isLoading = tab === 'catalog' ? loading : mineLoading;
+  const filter = (setter: (v: string) => void, v: string) => { setter(v); setPage(1); };
+  function field(key: keyof Form, label: string, rows?: number, required = false) { return <label className={s.field}>{label}{rows ? <textarea className="input-base" rows={rows} maxLength={key === 'instructions' ? 18000 : 10000} value={form[key]} onChange={e => { setForm({ ...form, [key]: e.target.value }); setReviewed(false); }} /> : <input className="input-base" required={required} maxLength={key === 'nomFr' ? 200 : 100} value={form[key]} onChange={e => { setForm({ ...form, [key]: e.target.value }); setReviewed(false); }} />}</label>; }
+  return <Shell><div className={s.root}>
+    <header className={s.header}><div><div className={s.eyebrow}>GYMBRO / BIBLIOTHÈQUE</div><h1>Chaque mouvement<br /><span>commence ici.</span></h1><p>Explorez les démonstrations, adaptez les consignes et préparez vos exercices.</p></div><button className="btn-primary" onClick={() => { reset(); setForm(empty); setCreating(true); }}><Plus size={16} /> Créer un exercice</button></header>
+    <div className={s.stats}><div><span>Dans le catalogue</span><strong>{catalog?.stats.total.toLocaleString('fr-FR') ?? '—'}</strong></div><div><span>Avec animation</span><strong>{catalog?.stats.animated.toLocaleString('fr-FR') ?? '—'}</strong></div><div><span>Mes exercices</span><strong>{exercises.length}<small>{exercises.filter(e => e.actif).length} actifs</small></strong></div></div>
+    <div className={s.tabs}><button className={tab === 'catalog' ? s.activeTab : ''} onClick={() => { setTab('catalog'); setPage(1); }}><Film size={16} /> Catalogue</button><button className={tab === 'mine' ? s.activeTab : ''} onClick={() => { setTab('mine'); setPage(1); }}><Dumbbell size={16} /> Mes exercices <span>{exercises.length}</span></button></div>
+    {target && <div className={s.notice}><Link2 size={18} /><div><strong>Lier une animation à « {target.nomFr} »</strong><p>Choisissez exactement le même mouvement et la même variante. L’identifiant et les programmes seront conservés.</p></div><button className="btn-ghost" onClick={() => setTarget(null)}>Annuler</button></div>}
+    {activeError && <div className="banner-error" role="alert"><AlertCircle size={16} />{activeError}<button className="btn-ghost" onClick={() => setRevision(v => v + 1)}>Réessayer</button></div>}{notice && <div className={s.notice} role="status"><Check size={17} />{notice}</div>}
+    <div className={s.filters}><label className={s.search}><Search size={17} /><input type="search" aria-label="Rechercher un exercice" placeholder="Rechercher un mouvement…" value={search} onChange={e => setSearch(e.target.value)} /></label><select aria-label="Groupe musculaire" value={group} onChange={e => filter(setGroup, e.target.value)}><option value="">Tous les muscles</option>{catalog?.filters.groups.map(g => <option key={g}>{g}</option>)}</select><select aria-label="Équipement" value={equipment} onChange={e => filter(setEquipment, e.target.value)}><option value="">Tout équipement</option>{catalog?.filters.equipment.map(g => <option key={g}>{g}</option>)}</select><select aria-label="Animation" value={animation} onChange={e => filter(setAnimation, e.target.value)}><option value="">Toutes les animations</option><option value="true">Avec animation</option><option value="false">Sans animation</option></select></div>
+    <div className={s.resultLine}><span>{tab === 'catalog' ? catalog?.total || 0 : mine.length} mouvements{isLoading ? ' · Chargement…' : ''}</span><span>{tab === 'catalog' ? 'Sélectionnez un mouvement pour le découvrir' : 'Vérifiez chaque exercice avant publication'}</span></div>
+    {isLoading ? <div className={s.grid} aria-busy="true">{Array.from({ length: 8 }, (_, i) => <div key={i} className={`skeleton ${s.skeleton}`} />)}</div> : tab === 'catalog' ? <div className={s.grid}>{catalog?.items.map(item => <button key={item.sourceId} className={s.card} onClick={() => { reset(); setSelected(item); setName(item.nameOriginal); }}><div className={s.thumbnail}>{item.hasAnimation && item.posterUrl ? <img loading="lazy" src={item.posterUrl} alt="" /> : <Dumbbell size={36} />}<span className={s.mediaBadge}>{item.hasAnimation ? <><Play size={10} /> Animation</> : 'Sans animation'}</span>{item.importedExerciseId && <span className={s.imported}><Check size={12} /> Ajouté</span>}</div><div className={s.cardBody}><span className={s.group}>{item.groupeMusculaire}</span><h2>{item.nameOriginal}</h2><p>{item.equipementRequis}</p><span className={s.discover}>Voir le mouvement <ArrowRight size={14} /></span></div></button>)}</div> : <div className={s.list}>{mine.slice((current - 1) * 24, current * 24).map(e => <button key={e.id} onClick={() => openEdit(e)} className={s.exerciseRow}><div className={s.mini}>{e.animationPosterUrl ? <img loading="lazy" src={e.animationPosterUrl} alt="" /> : <Dumbbell size={24} />}</div><div className={s.rowName}><strong>{e.nomFr}</strong><span>{e.groupeMusculaire} · {e.equipementRequis}</span></div><span className={e.actif ? 'badge badge-success' : 'badge badge-neutral'}>{e.actif ? 'Actif' : 'Brouillon'}</span><span className={s.source}>{e.mediaSourceId ? 'Catalogue Flow' : 'Manuel'}</span>{!e.animationUrl && <span className={s.missing}>Animation manquante</span>}<ArrowRight size={16} /></button>)}</div>}
+    {!isLoading && (tab === 'catalog' ? !catalog?.items.length : !mine.length) && <div className={s.empty}><Search size={32} /><h2>Aucun exercice trouvé</h2><p>Essayez un autre nom ou retirez un filtre.</p></div>}
+    <div className={s.pagination}><button className="btn-ghost" disabled={current <= 1 || isLoading} onClick={() => setPage(current - 1)}><ArrowLeft size={14} /> Précédent</button><span>Page {current} sur {pages}</span><button className="btn-ghost" disabled={current >= pages || isLoading} onClick={() => setPage(current + 1)}>Suivant <ArrowRight size={14} /></button></div><p className={s.footer}>Une démonstration est un support de travail. Vérifiez le mouvement, sa variante et les consignes avant de le proposer aux membres.</p>
+  </div><dialog ref={dialog} aria-labelledby="exercise-dialog-title" className={s.dialog} onCancel={e => { e.preventDefault(); close(); }} onClick={e => { if (e.target === e.currentTarget) close(); }}><div className={s.dialogInner}><div className={s.dialogHeader}><div><span className={s.eyebrow}>{selected ? 'DÉCOUVRIR LE MOUVEMENT' : creating ? 'NOUVEL EXERCICE' : 'GÉRER L’EXERCICE'}</span><h2 id="exercise-dialog-title">{selected?.nameOriginal || editing?.nomFr || 'Préparer un brouillon'}</h2></div><button className="btn-ghost" aria-label="Fermer" disabled={busy} onClick={close}><X size={20} /></button></div>{dialogError && <div className="banner-error" role="alert">{dialogError}</div>}
+    {selected ? <div className={s.detailGrid}><div><Preview key={selected.sourceId} url={selected.animationUrl} poster={selected.posterUrl} name={selected.nameOriginal} onViewed={() => setViewed(true)} /><div className={s.tags}><span>{selected.groupeMusculaire}</span><span>{selected.equipementRequis}</span></div><p className={s.muted}>Muscles principaux : {selected.musclesPrimaires.join(', ') || 'À préciser'}</p>{selected.musclesSecondaires.length > 0 && <p className={s.muted}>Muscles secondaires : {selected.musclesSecondaires.join(', ')}</p>}</div><div className={s.detailText}><h3>Consignes en français</h3>{selected.instructionsFr.length ? <ol>{selected.instructionsFr.map((t, i) => <li key={i}>{t}</li>)}</ol> : <p className={s.muted}>Consignes à rédiger après l’import.</p>}<div className={s.reviewNote}><AlertCircle size={17} /><p>Relisez les consignes et vérifiez la démonstration. L’ajout crée un brouillon à valider avant publication.</p></div>
+    {target ? <><h3>Lier à « {target.nomFr} »</h3><p className={s.muted}>La liaison remplacera le média et remettra cet exercice en brouillon.</p><label className={s.check}><input type="checkbox" checked={matched} onChange={e => setMatched(e.target.checked)} />Je confirme que le mouvement et la variante correspondent exactement à cet exercice.</label><button className="btn-primary" disabled={busy || !matched || !viewed || !selected.hasAnimation || Boolean(selected.importedExerciseId && selected.importedExerciseId !== target.id)} onClick={attach}><Link2 size={15} /> Lier cette animation</button>{!viewed && selected.hasAnimation && <p className={s.hint}>Lisez l’animation avant de confirmer la liaison.</p>}{selected.importedExerciseId && selected.importedExerciseId !== target.id && <p className={s.missing}>Cette source est déjà liée à un autre exercice.</p>}</> : selected.importedExerciseId ? <><div className={s.notice}><Check size={16} /> Déjà dans votre bibliothèque</div><button className="btn-primary" disabled={busy || mineLoading} onClick={() => { const e = exercises.find(e => e.id === selected.importedExerciseId); if (e) { openEdit(e); setTab('mine'); } else setDialogError('Actualisez la bibliothèque pour retrouver cet exercice.'); }}>Gérer cet exercice <ArrowRight size={15} /></button></> : <><label className={s.field}>Nom affiché en français<input className="input-base" maxLength={200} value={name} onChange={e => setName(e.target.value)} /></label><button className="btn-primary" disabled={busy || !name.trim()} onClick={importItem}><Plus size={16} />{busy ? 'Ajout…' : 'Ajouter en brouillon'}</button></>}
+    </div></div> : (editing || creating) && <div className={s.detailGrid}><div>{editing ? <><Preview key={`${editing.id}-${editing.animationUrl}-${editing.updatedAt}`} url={editing.animationUrl} poster={editing.animationPosterUrl} name={editing.nomFr} onViewed={() => setViewed(true)} /><div className={s.tags}><span>{editing.actif ? 'Actif dans GymBro' : 'Brouillon'}</span><span>{editing.mediaSourceId ? 'Catalogue Flow' : 'Exercice manuel'}</span></div><button className="btn-ghost" disabled={busy || dirty} onClick={() => { setTarget(editing); setTab('catalog'); setSearch(''); setGroup(''); setEquipment(''); setAnimation('true'); setPage(1); close(); }}><Link2 size={15} />{editing.animationUrl ? 'Changer l’animation' : 'Lier une animation du catalogue'}</button><div className={s.reviewNote}><AlertCircle size={17} /><p>Vérifiez la démonstration, sa variante et les consignes enregistrées avant de publier.</p></div>{!editing.actif && <label className={s.check}><input type="checkbox" checked={reviewed} disabled={!viewed || dirty} onChange={e => setReviewed(e.target.checked)} />J’ai visionné le mouvement et vérifié les consignes et la variante.</label>}<button className={editing.actif ? 'btn-ghost' : 'btn-primary'} disabled={busy || dirty || (!editing.actif && (!viewed || !reviewed || !editing.animationUrl))} onClick={() => toggle(editing)}>{editing.actif ? 'Désactiver l’exercice' : 'Valider et publier'}</button>{dirty ? <p className={s.hint}>Enregistrez les modifications avant de valider.</p> : !editing.actif && !viewed && editing.animationUrl && <p className={s.hint}>Lisez l’animation, puis cochez la validation.</p>}</> : <div className={s.reviewNote}><Dumbbell size={24} /><p>Créez votre exercice en brouillon. Vous pourrez ensuite lui lier une animation avant publication.</p></div>}</div><form className={s.editForm} onSubmit={e => { e.preventDefault(); save(); }}><h3>Informations de l’exercice</h3>{field('nomFr', 'Nom en français *', undefined, true)}<div className={s.fieldPair}>{field('groupeMusculaire', 'Groupe musculaire *', undefined, true)}{field('equipementRequis', 'Équipement *', undefined, true)}</div>{field('difficulte', 'Difficulté')}{field('descriptionFr', 'Description', 2)}{field('instructions', 'Consignes · une étape par ligne', 6)}<div className={s.fieldPair}>{field('primary', 'Muscles principaux · un par ligne', 2)}{field('secondary', 'Muscles secondaires · un par ligne', 2)}</div><button type="submit" className="btn-primary" disabled={busy}>{busy ? 'Enregistrement…' : creating ? 'Créer le brouillon' : 'Enregistrer les modifications'}</button></form></div>}
+  </div></dialog></Shell>;
 }
