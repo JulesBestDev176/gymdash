@@ -4,7 +4,7 @@ import Shell from '@/components/shell';
 import EmptyState from '@/components/ui/empty-state';
 import Spinner from '@/components/ui/spinner';
 import { adminApi } from '@/lib/api';
-import { Dumbbell, Search, AlertCircle, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { Dumbbell, Search, AlertCircle, RefreshCw, CheckCircle, XCircle, Plus, X } from 'lucide-react';
 
 interface GymbroExercise {
   id: string; nomFr: string; descriptionFr?: string;
@@ -12,12 +12,35 @@ interface GymbroExercise {
   difficulte?: string; actif: boolean; createdAt: string;
 }
 
+interface CreateExerciseForm {
+  nomFr: string;
+  groupeMusculaire: string;
+  equipementRequis: string;
+  difficulte: string;
+  descriptionFr: string;
+}
+
+const FORM_EMPTY: CreateExerciseForm = {
+  nomFr: '', groupeMusculaire: '', equipementRequis: '', difficulte: '', descriptionFr: '',
+};
+
+const GROUPES = [
+  'Pectoraux', 'Dos', 'Épaules', 'Biceps', 'Triceps', 'Avant-bras',
+  'Abdominaux', 'Obliques', 'Quadriceps', 'Ischio-jambiers', 'Fessiers',
+  'Mollets', 'Cardio', 'Plein corps',
+];
+const EQUIPEMENTS = [
+  'Aucun (poids de corps)', 'Haltères', 'Barre', 'Kettlebell', 'Câbles',
+  'Machine guidée', 'Élastique', 'TRX', 'Banc', 'Poulie haute',
+];
+const DIFFICULTES = ['Débutant', 'Intermédiaire', 'Avancé'];
+
 function difficulteBadge(d?: string) {
   if (!d) return null;
   const val = d.toLowerCase();
-  if (val.includes('débutant') || val === 'debutant')       return 'badge badge-success';
+  if (val.includes('débutant') || val === 'debutant')           return 'badge badge-success';
   if (val.includes('intermédiaire') || val === 'intermediaire') return 'badge badge-warning';
-  if (val.includes('avancé') || val === 'avance')           return 'badge badge-danger';
+  if (val.includes('avancé') || val === 'avance')               return 'badge badge-danger';
   return 'badge badge-neutral';
 }
 
@@ -30,6 +53,12 @@ export default function GymbroExercicesPage() {
   const [search, setSearch]       = useState('');
   const [page, setPage]           = useState(1);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  // Creation form
+  const [showForm, setShowForm]   = useState(false);
+  const [form, setForm]           = useState<CreateExerciseForm>(FORM_EMPTY);
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving]       = useState(false);
 
   const load = useCallback(() => {
     setLoading(true); setError('');
@@ -65,12 +94,46 @@ export default function GymbroExercicesPage() {
     finally { setTogglingId(null); }
   }
 
+  function openForm() { setForm(FORM_EMPTY); setFormError(''); setShowForm(true); }
+  function closeForm() { if (!saving) { setShowForm(false); setFormError(''); } }
+
+  async function submitForm() {
+    if (!form.nomFr.trim()) { setFormError('Le nom est obligatoire.'); return; }
+    if (!form.groupeMusculaire) { setFormError('Le groupe musculaire est obligatoire.'); return; }
+    if (!form.equipementRequis) { setFormError('L\'équipement est obligatoire.'); return; }
+    setSaving(true); setFormError('');
+    try {
+      const payload: any = {
+        nomFr: form.nomFr.trim(),
+        groupeMusculaire: form.groupeMusculaire,
+        equipementRequis: form.equipementRequis,
+        musclesPrimairesJson: JSON.stringify([form.groupeMusculaire]),
+      };
+      if (form.difficulte)   payload.difficulte = form.difficulte;
+      if (form.descriptionFr.trim()) payload.descriptionFr = form.descriptionFr.trim();
+      const res = await adminApi.post('/api/v1/gymbro/exercises/admin', payload);
+      setExercises((prev) => [res.data, ...prev]);
+      setShowForm(false);
+    } catch (e: any) {
+      setFormError(e?.response?.data?.message ?? 'Erreur lors de la création');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <Shell>
       <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <div>
-          <h1 className="page-title">Exercices GymBro</h1>
-          <p className="page-sub">Bibliothèque d'exercices de l'application</p>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <h1 className="page-title">Exercices GymBro</h1>
+            <p className="page-sub">Bibliothèque d'exercices de l'application</p>
+          </div>
+          <button onClick={openForm} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, padding: '9px 16px', whiteSpace: 'nowrap' }}>
+            <Plus size={14} /> Nouvel exercice
+          </button>
         </div>
 
         {error && (
@@ -84,7 +147,7 @@ export default function GymbroExercicesPage() {
         )}
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, maxWidth: 400 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, maxWidth: 360 }}>
           <div className="card-accent" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span className="section-label">Total</span>
@@ -99,7 +162,11 @@ export default function GymbroExercicesPage() {
         </div>
 
         {!loading && !error && exercises.length === 0 ? (
-          <EmptyState icon={Dumbbell} title="Aucun exercice" subtitle="Les exercices créés dans GymBro apparaîtront ici" />
+          <EmptyState icon={Dumbbell} title="Aucun exercice" subtitle="Créez le premier exercice de la bibliothèque">
+            <button onClick={openForm} className="btn-primary" style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13 }}>
+              <Plus size={14} /> Nouvel exercice
+            </button>
+          </EmptyState>
         ) : (
           <div className="card" style={{ overflow: 'hidden' }}>
             {/* Toolbar */}
@@ -115,7 +182,6 @@ export default function GymbroExercicesPage() {
               </span>
             </div>
 
-            {/* Table */}
             {loading ? (
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -171,7 +237,6 @@ export default function GymbroExercicesPage() {
                               padding: '5px 10px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
                               background: e.actif ? 'var(--danger-dim)' : 'var(--success-dim)',
                               color: e.actif ? 'var(--danger)' : 'var(--success)',
-                              transition: 'opacity 0.15s',
                               opacity: togglingId === e.id ? 0.5 : 1,
                             }}
                           >
@@ -186,23 +251,132 @@ export default function GymbroExercicesPage() {
               </table>
             )}
 
-            {/* Pagination */}
             {totalPages > 1 && !loading && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
-                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }}>
-                  ← Précédent
-                </button>
-                <span style={{ fontSize: 12, color: 'var(--fg3)' }}>
-                  Page <span className="num" style={{ color: 'var(--fg2)', fontWeight: 700 }}>{currentPage}</span> / <span className="num">{totalPages}</span>
-                </span>
-                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }}>
-                  Suivant →
-                </button>
+                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }}>← Précédent</button>
+                <span style={{ fontSize: 12, color: 'var(--fg3)' }}>Page <span className="num" style={{ color: 'var(--fg2)', fontWeight: 700 }}>{currentPage}</span> / <span className="num">{totalPages}</span></span>
+                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }}>Suivant →</button>
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* ── Creation modal ── */}
+      {showForm && (
+        <div
+          role="dialog" aria-modal="true" aria-label="Nouvel exercice"
+          onClick={(e) => { if (e.target === e.currentTarget) closeForm(); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 200,
+            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div style={{
+            background: 'var(--card)', border: '1px solid var(--border2)',
+            borderRadius: 16, width: '100%', maxWidth: 520,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+            animation: 'fadeUp 0.18s ease both',
+          }}>
+            {/* Modal header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--accent-dim)', border: '1px solid rgba(181,255,45,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)' }}>
+                  <Dumbbell size={15} />
+                </span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--fg)' }}>Nouvel exercice</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--fg3)', marginTop: 1 }}>Ajouter à la bibliothèque GymBro</div>
+                </div>
+              </div>
+              <button onClick={closeForm} disabled={saving} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg3)', padding: 6, borderRadius: 7, display: 'flex' }}>
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {formError && (
+                <div style={{ background: 'var(--danger-dim)', border: '1px solid rgba(255,68,85,0.2)', borderRadius: 8, padding: '9px 12px', fontSize: 12.5, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <AlertCircle size={13} />{formError}
+                </div>
+              )}
+
+              <div>
+                <label className="section-label" style={{ display: 'block', marginBottom: 6 }}>
+                  Nom de l'exercice <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  className="input-base" placeholder="ex : Développé couché barre"
+                  value={form.nomFr} onChange={(e) => setForm((f) => ({ ...f, nomFr: e.target.value }))}
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label className="section-label" style={{ display: 'block', marginBottom: 6 }}>
+                    Groupe musculaire <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <select className="input-base" style={{ width: '100%' }} value={form.groupeMusculaire} onChange={(e) => setForm((f) => ({ ...f, groupeMusculaire: e.target.value }))}>
+                    <option value="">Sélectionner…</option>
+                    {GROUPES.map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="section-label" style={{ display: 'block', marginBottom: 6 }}>
+                    Équipement <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <select className="input-base" style={{ width: '100%' }} value={form.equipementRequis} onChange={(e) => setForm((f) => ({ ...f, equipementRequis: e.target.value }))}>
+                    <option value="">Sélectionner…</option>
+                    {EQUIPEMENTS.map((eq) => <option key={eq} value={eq}>{eq}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="section-label" style={{ display: 'block', marginBottom: 6 }}>Difficulté</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {DIFFICULTES.map((d) => (
+                    <button
+                      key={d} type="button"
+                      onClick={() => setForm((f) => ({ ...f, difficulte: f.difficulte === d ? '' : d }))}
+                      style={{
+                        flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        border: form.difficulte === d ? '1px solid var(--accent)' : '1px solid var(--border2)',
+                        background: form.difficulte === d ? 'var(--accent-dim)' : 'var(--bg2)',
+                        color: form.difficulte === d ? 'var(--accent)' : 'var(--fg2)',
+                        transition: 'all 0.12s',
+                      }}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="section-label" style={{ display: 'block', marginBottom: 6 }}>Description (optionnel)</label>
+                <textarea
+                  className="input-base" placeholder="Instructions d'exécution, conseils…"
+                  rows={3} value={form.descriptionFr} onChange={(e) => setForm((f) => ({ ...f, descriptionFr: e.target.value }))}
+                  style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </div>
+            </div>
+
+            {/* Modal footer */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 22px', borderTop: '1px solid var(--border)' }}>
+              <button onClick={closeForm} disabled={saving} className="btn-ghost" style={{ fontSize: 13, padding: '8px 16px' }}>Annuler</button>
+              <button onClick={submitForm} disabled={saving} className="btn-primary" style={{ fontSize: 13, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 7 }}>
+                {saving ? <><Spinner size="sm" /> Création…</> : <><Plus size={13} /> Créer l'exercice</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Shell>
   );
 }

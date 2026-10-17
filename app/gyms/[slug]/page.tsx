@@ -11,6 +11,7 @@ import {
   TrendingUp, MapPin, Settings, AlertCircle,
   ChevronDown, RefreshCw, X, Eye, EyeOff,
   Search, ChevronLeft, ChevronRight,
+  ShieldOff, ShieldCheck,
 } from 'lucide-react';
 
 /* ── types ────────────────────────────────────────────────── */
@@ -28,11 +29,19 @@ type TabKey = 'apercu' | 'adherents' | 'equipe' | 'paiements';
 const PAGE_SIZE = 20;
 
 const MEMBER_STATUT_META: Record<MemberStatut, { label: string; cls: string }> = {
-  ACTIF:            { label: 'Actif',         cls: 'badge badge-success' },
-  EXPIRE_DEMAIN:    { label: 'Expire demain',  cls: 'badge badge-warning' },
-  EXPIRE:           { label: 'Expiré',         cls: 'badge badge-danger'  },
-  CARTE_DESACTIVEE: { label: 'Carte désact.',  cls: 'badge badge-neutral' },
+  ACTIF:            { label: 'Actif',          cls: 'badge badge-success' },
+  EXPIRE_DEMAIN:    { label: 'Expire demain',   cls: 'badge badge-warning' },
+  EXPIRE:           { label: 'Expiré',          cls: 'badge badge-danger'  },
+  CARTE_DESACTIVEE: { label: 'Carte bloquée',   cls: 'badge badge-neutral' },
 };
+
+const MEMBER_FILTER_TABS: { key: MemberStatut | ''; label: string }[] = [
+  { key: '',                 label: 'Tous' },
+  { key: 'ACTIF',            label: 'Actifs' },
+  { key: 'EXPIRE_DEMAIN',    label: 'Expire demain' },
+  { key: 'EXPIRE',           label: 'Expirés' },
+  { key: 'CARTE_DESACTIVEE', label: 'Carte bloquée' },
+];
 
 /* ── constants ────────────────────────────────────────────── */
 const STATUT_META: Record<GymStatut, { label: string; cls: string }> = {
@@ -315,9 +324,12 @@ export default function GymDetailPage() {
   const [gym, setGym]         = useState<Gym | null>(null);
   const [users, setUsers]         = useState<User[]>([]);
   const [payments, setPayments]   = useState<Payment[]>([]);
-  const [members, setMembers]     = useState<Member[]>([]);
+  const [members, setMembers]           = useState<Member[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
   const [memberPage, setMemberPage]     = useState(1);
+  const [memberStatut, setMemberStatut] = useState<MemberStatut | ''>('');
+  const [togglingCarteId, setTogglingCarteId] = useState<string | null>(null);
+  const [togglingUserId, setTogglingUserId]   = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [statutMenu, setStatutMenu] = useState(false);
@@ -336,7 +348,7 @@ export default function GymDetailPage() {
         setGym(found);
         return Promise.all([
           adminApi.get(`/api/v1/gym/${found.id}/users`).catch(() => ({ data: [] })),
-          adminApi.get(`/api/v1/payments?gymId=${found.id}`).catch(() => ({ data: [] })),
+          adminApi.get(`/api/v1/gym/${found.id}/payments`).catch(() => ({ data: [] })),
           adminApi.get(`/api/v1/gym/${found.id}/members`).catch(() => ({ data: [] })),
         ]);
       })
@@ -365,6 +377,29 @@ export default function GymDetailPage() {
     } finally {
       setUpdatingStatut(false);
     }
+  }
+
+  async function toggleUser(u: User) {
+    setTogglingUserId(u.id);
+    try {
+      await adminApi.patch(`/api/v1/gym/user/${u.id}/toggle`);
+      setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, actif: !x.actif } : x));
+    } catch { /* ignore */ }
+    finally { setTogglingUserId(null); }
+  }
+
+  async function toggleMemberCarte(m: Member) {
+    if (!gym) return;
+    setTogglingCarteId(m.id);
+    try {
+      await adminApi.patch(`/api/v1/gym/${gym.id}/members/${m.id}/carte/toggle`);
+      setMembers((prev) => prev.map((x) =>
+        x.id === m.id
+          ? { ...x, carteActive: !x.carteActive, statut: !x.carteActive ? ('ACTIF' as MemberStatut) : ('CARTE_DESACTIVEE' as MemberStatut) }
+          : x
+      ));
+    } catch { /* ignore */ }
+    finally { setTogglingCarteId(null); }
   }
 
   /* ── loading ── */
@@ -574,16 +609,20 @@ export default function GymDetailPage() {
         {/* ══ ADHÉRENTS ═══════════════════════════════════ */}
         {tab === 'adherents' && (() => {
           const q = memberSearch.trim().toLowerCase();
-          const filtered = q
-            ? members.filter((m) =>
-                `${m.prenom} ${m.nom}`.toLowerCase().includes(q) ||
-                m.telephone.includes(q) ||
-                m.numeroCarte.toLowerCase().includes(q)
-              )
-            : members;
+          let filtered = members;
+          if (memberStatut) filtered = filtered.filter((m) => m.statut === memberStatut);
+          if (q) filtered = filtered.filter((m) =>
+            `${m.prenom} ${m.nom}`.toLowerCase().includes(q) ||
+            m.telephone.includes(q) ||
+            m.numeroCarte.toLowerCase().includes(q)
+          );
           const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
           const page = Math.min(memberPage, totalPages);
           const slice = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+          // counts per statut for tabs
+          const statutCounts: Record<string, number> = { '': members.length };
+          for (const m of members) statutCounts[m.statut] = (statutCounts[m.statut] ?? 0) + 1;
 
           return (
             <div className="card" style={{ overflow: 'hidden' }}>
@@ -612,6 +651,26 @@ export default function GymDetailPage() {
                 </span>
               </div>
 
+              {/* Statut filter tabs */}
+              <div style={{ display: 'flex', gap: 0, overflowX: 'auto', borderBottom: '1px solid var(--border)', padding: '0 16px' }}>
+                {MEMBER_FILTER_TABS.map(({ key, label }) => {
+                  const active = memberStatut === key;
+                  const count = statutCounts[key] ?? 0;
+                  return (
+                    <button key={key || 'all'} onClick={() => { setMemberStatut(key); setMemberPage(1); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '9px 12px', fontSize: 12, fontWeight: active ? 700 : 500, color: active ? 'var(--fg)' : 'var(--fg3)', borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent', transition: 'color 0.15s', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}
+                      onMouseEnter={(e) => { if (!active) e.currentTarget.style.color = 'var(--fg2)'; }}
+                      onMouseLeave={(e) => { if (!active) e.currentTarget.style.color = 'var(--fg3)'; }}
+                    >
+                      {label}
+                      <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 99, background: active ? 'var(--accent-dim)' : 'var(--border)', color: active ? 'var(--accent)' : 'var(--fg3)', padding: '1px 6px', minWidth: 18, textAlign: 'center' }}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Table */}
               {members.length === 0 ? (
                 <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--fg3)', fontSize: 13 }}>
@@ -619,7 +678,7 @@ export default function GymDetailPage() {
                 </div>
               ) : filtered.length === 0 ? (
                 <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--fg3)', fontSize: 13 }}>
-                  Aucun résultat pour « <strong style={{ color: 'var(--fg2)' }}>{memberSearch}</strong> »
+                  Aucun résultat pour les filtres sélectionnés
                 </div>
               ) : (
                 <table className="data-table">
@@ -630,7 +689,8 @@ export default function GymDetailPage() {
                       <th>N° Carte</th>
                       <th>Téléphone</th>
                       <th>Statut</th>
-                      <th style={{ textAlign: 'right' }}>Expiration</th>
+                      <th>Expiration</th>
+                      <th style={{ width: 130 }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -638,6 +698,7 @@ export default function GymDetailPage() {
                       const globalIdx = (page - 1) * PAGE_SIZE + i + 1;
                       const exp = m.subscriptions?.[0]?.dateExpiration;
                       const smeta = MEMBER_STATUT_META[m.statut] ?? MEMBER_STATUT_META.EXPIRE;
+                      const isToggling = togglingCarteId === m.id;
                       return (
                         <tr key={m.id}>
                           <td>
@@ -647,17 +708,35 @@ export default function GymDetailPage() {
                           </td>
                           <td style={{ fontWeight: 600 }}>{m.prenom} {m.nom}</td>
                           <td>
-                            <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'monospace', color: 'var(--fg2)', background: 'var(--card3)', padding: '2px 7px', borderRadius: 5 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'monospace', color: m.carteActive ? 'var(--fg2)' : 'var(--danger)', background: m.carteActive ? 'var(--card3)' : 'var(--danger-dim)', padding: '2px 7px', borderRadius: 5, textDecoration: m.carteActive ? 'none' : 'line-through' }}>
                               {m.numeroCarte}
                             </span>
                           </td>
                           <td style={{ color: 'var(--fg2)', fontSize: 13 }}>{m.telephone}</td>
                           <td><span className={smeta.cls} style={{ fontSize: 10 }}>{smeta.label}</span></td>
-                          <td style={{ textAlign: 'right', color: 'var(--fg3)', fontSize: 12 }}>
-                            {exp
-                              ? new Date(exp).toLocaleDateString('fr-FR')
-                              : <span style={{ color: 'var(--border3)' }}>—</span>
-                            }
+                          <td style={{ color: 'var(--fg3)', fontSize: 12 }}>
+                            {exp ? new Date(exp).toLocaleDateString('fr-FR') : <span style={{ color: 'var(--border3)' }}>—</span>}
+                          </td>
+                          <td>
+                            <button
+                              onClick={() => toggleMemberCarte(m)}
+                              disabled={isToggling}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 5,
+                                padding: '5px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                                fontSize: 11.5, fontWeight: 600, opacity: isToggling ? 0.5 : 1,
+                                background: m.carteActive ? 'var(--danger-dim)' : 'var(--success-dim)',
+                                color: m.carteActive ? 'var(--danger)' : 'var(--success)',
+                                transition: 'opacity 0.15s',
+                              }}
+                            >
+                              {isToggling
+                                ? <Spinner size="sm" />
+                                : m.carteActive
+                                  ? <><ShieldOff size={11} /> Bloquer</>
+                                  : <><ShieldCheck size={11} /> Débloquer</>
+                              }
+                            </button>
                           </td>
                         </tr>
                       );
@@ -700,6 +779,29 @@ export default function GymDetailPage() {
         {/* ══ ÉQUIPE ══════════════════════════════════════ */}
         {tab === 'equipe' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            {/* Stats row */}
+            {users.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                <div className="card-accent" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <span className="section-label">Total équipe</span>
+                  <span className="stat-value stat-value-accent num" style={{ fontSize: 24 }}>{users.length}</span>
+                </div>
+                <div className="card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <span className="section-label">Comptes actifs</span>
+                  <span className="stat-value num" style={{ fontSize: 24, color: 'var(--success)' }}>
+                    {users.filter((u) => u.actif).length}
+                  </span>
+                </div>
+                <div className="card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <span className="section-label">Admins</span>
+                  <span className="stat-value num" style={{ fontSize: 24, color: 'var(--fg)' }}>
+                    {users.filter((u) => u.role === 'ADMIN').length}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {users.length === 0 ? (
               <EmptyState
                 icon={Users}
@@ -713,6 +815,13 @@ export default function GymDetailPage() {
               />
             ) : (
               <div className="card" style={{ overflow: 'hidden' }}>
+                {/* Toolbar */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                  <span className="section-label">Membres de l'équipe</span>
+                  <button className="btn-primary" style={{ fontSize: 12, padding: '6px 12px' }} onClick={() => setShowNewUser(true)}>
+                    <UserPlus size={12} /> Ajouter
+                  </button>
+                </div>
                 <table className="data-table">
                   <thead>
                     <tr>
@@ -720,25 +829,47 @@ export default function GymDetailPage() {
                       <th>Email</th>
                       <th>Rôle</th>
                       <th>Statut</th>
+                      <th style={{ width: 130 }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {users.map((u) => (
-                      <tr key={u.id}>
-                        <td style={{ fontWeight: 600 }}>{u.prenom} {u.nom}</td>
-                        <td style={{ color: 'var(--fg2)', fontSize: 13 }}>{u.email}</td>
-                        <td>
-                          <span className={(ROLE_META[u.role] ?? { cls: 'badge badge-neutral' }).cls}>
-                            {(ROLE_META[u.role] ?? { label: u.role }).label}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={u.actif ? 'badge badge-success' : 'badge badge-danger'}>
-                            {u.actif ? 'Actif' : 'Inactif'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {users.map((u) => {
+                      const roleMeta = ROLE_META[u.role] ?? { label: u.role, cls: 'badge badge-neutral' };
+                      const isToggling = togglingUserId === u.id;
+                      return (
+                        <tr key={u.id}>
+                          <td style={{ fontWeight: 600 }}>{u.prenom} {u.nom}</td>
+                          <td style={{ color: 'var(--fg2)', fontSize: 13 }}>{u.email}</td>
+                          <td><span className={roleMeta.cls} style={{ fontSize: 10 }}>{roleMeta.label}</span></td>
+                          <td>
+                            <span className={u.actif ? 'badge badge-success' : 'badge badge-danger'} style={{ fontSize: 10 }}>
+                              {u.actif ? 'Actif' : 'Inactif'}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              onClick={() => toggleUser(u)}
+                              disabled={isToggling}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 5,
+                                padding: '5px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                                fontSize: 11.5, fontWeight: 600, opacity: isToggling ? 0.5 : 1,
+                                background: u.actif ? 'var(--danger-dim)' : 'var(--success-dim)',
+                                color: u.actif ? 'var(--danger)' : 'var(--success)',
+                                transition: 'opacity 0.15s',
+                              }}
+                            >
+                              {isToggling
+                                ? <Spinner size="sm" />
+                                : u.actif
+                                  ? <><ShieldOff size={11} /> Désactiver</>
+                                  : <><ShieldCheck size={11} /> Activer</>
+                              }
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
