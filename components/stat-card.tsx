@@ -1,35 +1,37 @@
-import { cn } from '@/lib/utils';
-
 interface StatCardProps {
   label: string;
   value: string | number;
   sub?: string;
   accent?: boolean;
   icon?: React.ReactNode;
+  loading?: boolean;
 }
 
-export default function StatCard({ label, value, sub, accent, icon }: StatCardProps) {
-  return (
-    <div
-      className={cn(
-        'rounded-xl p-5 border flex flex-col gap-3',
-        accent
-          ? 'bg-[var(--accent)] border-[var(--accent-dark)] text-black'
-          : 'bg-[var(--card)] border-[var(--card-border)]',
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <span className={cn('text-sm font-medium', accent ? 'text-black/70' : 'text-[var(--muted)]')}>
-          {label}
-        </span>
-        {icon && <span className={accent ? 'text-black/60' : 'text-[var(--muted)]'}>{icon}</span>}
+export default function StatCard({ label, value, sub, accent, icon, loading }: StatCardProps) {
+  if (loading) {
+    return (
+      <div className={accent ? 'card-accent p-5 flex flex-col gap-3' : 'card p-5 flex flex-col gap-3'}>
+        <div className="skeleton h-2.5 w-20" />
+        <div className="skeleton h-7 w-24 mt-1" />
+        {sub && <div className="skeleton h-2 w-16" />}
       </div>
-      <div className={cn('text-2xl font-bold', accent ? 'text-black' : 'text-[var(--foreground)]')}>
+    );
+  }
+
+  return (
+    <div className={accent ? 'card-accent p-5 flex flex-col gap-2' : 'card p-5 flex flex-col gap-2'}>
+      <div className="flex items-start justify-between gap-2">
+        <span className="section-label">{label}</span>
+        {icon && (
+          <span className={accent ? 'icon-chip icon-chip-accent' : 'icon-chip'}>
+            {icon}
+          </span>
+        )}
+      </div>
+      <div className={accent ? 'stat-value stat-value-accent' : 'stat-value'}>
         {value}
       </div>
-      {sub && (
-        <div className={cn('text-xs', accent ? 'text-black/60' : 'text-[var(--muted)]')}>{sub}</div>
-      )}
+      {sub && <div className="text-xs" style={{ color: 'var(--fg3)' }}>{sub}</div>}
     </div>
   );
 }

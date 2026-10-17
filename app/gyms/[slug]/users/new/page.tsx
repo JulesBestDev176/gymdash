@@ -3,8 +3,9 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import Shell from '@/components/shell';
+import Spinner from '@/components/ui/spinner';
 import { adminApi, Gym } from '@/lib/api';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, AlertCircle } from 'lucide-react';
 
 export default function NewUserPage() {
   const router = useRouter();
@@ -17,20 +18,22 @@ export default function NewUserPage() {
   });
 
   useEffect(() => {
-    adminApi.get('/gym/all').then((r) => {
+    adminApi.get('/api/v1/gym/all').then((r) => {
       const found = r.data.find((g: Gym) => g.slug === slug);
       if (found) setGymId(found.id);
     });
   }, [slug]);
+
+  function set(k: keyof typeof form, v: string) {
+    setForm((f) => ({ ...f, [k]: v }));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      // Créer user via l'endpoint users — nécessite un JWT admin de la salle
-      // Pour gymdash on utilise un login temporaire ou un endpoint dédié
-      await adminApi.post('/users/admin-create', { ...form, gymId });
+      await adminApi.post('/api/v1/users/admin-create', { ...form, gymId });
       router.push(`/gyms/${slug}`);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -40,71 +43,105 @@ export default function NewUserPage() {
     }
   }
 
-  const inputCls = 'w-full px-4 py-2.5 rounded-lg text-sm outline-none';
-  const inputStyle = { background: 'var(--muted-bg)', border: '1px solid var(--card-border)', color: 'var(--foreground)' };
-
   return (
     <Shell>
-      <div className="max-w-md space-y-6">
+      <div className="space-y-6 fade-up" style={{ maxWidth: '480px' }}>
+        {/* Header */}
         <div className="flex items-center gap-3">
-          <Link href={`/gyms/${slug}`} className="p-2 rounded-lg hover:bg-[var(--muted-bg)] transition-colors">
-            <ArrowLeft size={18} style={{ color: 'var(--muted)' }} />
+          <Link href={`/gyms/${slug}`} className="btn-icon">
+            <ArrowLeft size={16} />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Nouvel utilisateur</h1>
-            <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>Créer un accès pour cette salle</p>
+            <h1 className="page-title">Nouvel utilisateur</h1>
+            <p className="page-sub">Créer un accès pour cette salle</p>
           </div>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-2xl p-6 space-y-4"
-          style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" style={{ color: 'var(--muted)' }}>Prénom</label>
-              <input required className={inputCls} style={inputStyle}
-                value={form.prenom} onChange={(e) => setForm((f) => ({ ...f, prenom: e.target.value }))} />
+        <form onSubmit={handleSubmit} className="card p-6 flex flex-col gap-5">
+          {/* Identité */}
+          <div>
+            <p className="section-label mb-3">Identité</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="section-label">Prénom</label>
+                <input
+                  required
+                  className="input-base"
+                  value={form.prenom}
+                  onChange={(e) => set('prenom', e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="section-label">Nom</label>
+                <input
+                  required
+                  className="input-base"
+                  value={form.nom}
+                  onChange={(e) => set('nom', e.target.value)}
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" style={{ color: 'var(--muted)' }}>Nom</label>
-              <input required className={inputCls} style={inputStyle}
-                value={form.nom} onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))} />
+          </div>
+
+          {/* Contact */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+            <p className="section-label mb-3">Accès</p>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="section-label">Email</label>
+                <input
+                  type="email"
+                  required
+                  className="input-base"
+                  value={form.email}
+                  onChange={(e) => set('email', e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="section-label">Mot de passe temporaire</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  className="input-base"
+                  value={form.password}
+                  onChange={(e) => set('password', e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="section-label">Rôle</label>
+                <select
+                  className="input-base"
+                  value={form.role}
+                  onChange={(e) => set('role', e.target.value)}
+                >
+                  <option value="ADMIN">ADMIN — Propriétaire</option>
+                  <option value="GERANT">GERANT — Réceptionniste</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium" style={{ color: 'var(--muted)' }}>Email</label>
-            <input type="email" required className={inputCls} style={inputStyle}
-              value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+          {error && (
+            <div className="banner-error">
+              <AlertCircle size={14} />
+              {error}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="submit"
+              disabled={loading || !gymId}
+              className="btn-primary flex-1"
+            >
+              {loading && <Spinner size="sm" />}
+              {loading ? 'Création…' : 'Créer le compte'}
+            </button>
+            <Link href={`/gyms/${slug}`} className="btn-ghost">
+              Annuler
+            </Link>
           </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium" style={{ color: 'var(--muted)' }}>Mot de passe temporaire</label>
-            <input type="password" required minLength={6} className={inputCls} style={inputStyle}
-              value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium" style={{ color: 'var(--muted)' }}>Rôle</label>
-            <select className={inputCls} style={inputStyle}
-              value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
-              <option value="ADMIN">ADMIN (Propriétaire)</option>
-              <option value="GERANT">GERANT (Réceptionniste)</option>
-            </select>
-          </div>
-
-          {error && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-
-          <button
-            type="submit"
-            disabled={loading || !gymId}
-            className="w-full py-3 rounded-lg font-semibold text-sm transition-opacity disabled:opacity-60"
-            style={{ background: 'var(--accent)', color: 'black' }}
-          >
-            {loading ? 'Création...' : 'Créer le compte'}
-          </button>
         </form>
       </div>
     </Shell>

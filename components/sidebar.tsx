@@ -1,58 +1,92 @@
 'use client';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Building2, Users, CreditCard, LogOut } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import {
+  LayoutDashboard, Building2, Users, CreditCard,
+  Activity, ClipboardList, UserCheck, LogOut,
+} from 'lucide-react';
 
-const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/gyms', label: 'Salles', icon: Building2 },
-  { href: '/users', label: 'Utilisateurs', icon: Users },
-  { href: '/payments', label: 'Paiements', icon: CreditCard },
+const NAV_MAIN = [
+  { href: '/dashboard',  label: 'Dashboard',    icon: LayoutDashboard },
+  { href: '/gyms',       label: 'Salles',        icon: Building2 },
+  { href: '/adherents',  label: 'Adhérents',     icon: UserCheck },
+  { href: '/users',      label: 'Utilisateurs',  icon: Users },
+  { href: '/payments',   label: 'Paiements',     icon: CreditCard },
+];
+
+const NAV_SYS = [
+  { href: '/monitoring', label: 'Monitoring',    icon: Activity },
+  { href: '/audit',      label: 'Audit',         icon: ClipboardList },
 ];
 
 export default function Sidebar() {
   const path = usePathname();
 
+  function isActive(href: string) {
+    return path === href || (href !== '/dashboard' && path.startsWith(href));
+  }
+
+  function logout() {
+    if (!confirm('Voulez-vous vous déconnecter ?')) return;
+    localStorage.removeItem('gymdash_token');
+    localStorage.removeItem('gymdash_user');
+    window.location.href = '/login';
+  }
+
+  const userRaw = typeof window !== 'undefined' ? localStorage.getItem('gymdash_user') : null;
+  const user = userRaw ? JSON.parse(userRaw) : null;
+  const initials = user ? `${user.prenom?.[0] ?? ''}${user.nom?.[0] ?? ''}`.toUpperCase() : 'SA';
+
   return (
-    <aside className="flex flex-col w-56 min-h-screen bg-[var(--card)] border-r border-[var(--card-border)] shrink-0">
-      {/* Logo */}
-      <div className="flex items-center gap-2 px-5 py-5 border-b border-[var(--card-border)]">
-        <span className="text-xl font-black tracking-tight text-[var(--accent)]">GymDash</span>
-        <span className="text-xs text-[var(--muted)] mt-0.5">admin</span>
+    <aside className="sidebar">
+      {/* Brand */}
+      <div className="sidebar-brand">
+        <div className="sidebar-logo">
+          <Image src="/logo.png" alt="GymBro" width={22} height={22} style={{ objectFit: 'contain' }} />
+        </div>
+        <div className="sidebar-brand-text">
+          <span className="brand">GymDash</span>
+          <span className="sidebar-tag">SUPER ADMIN</span>
+        </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active = path === href || (href !== '/dashboard' && path.startsWith(href));
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                active
-                  ? 'bg-[var(--accent)] text-black'
-                  : 'text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--muted-bg)]',
-              )}
-            >
-              <Icon size={16} />
-              {label}
-            </Link>
-          );
-        })}
+      <nav className="sidebar-nav">
+        <span className="section-label sidebar-nav-label">Navigation</span>
+        {NAV_MAIN.map(({ href, label, icon: Icon }) => (
+          <Link key={href} href={href} className={`nav-item${isActive(href) ? ' active' : ''}`} aria-current={isActive(href) ? 'page' : undefined}>
+            <Icon size={14} strokeWidth={isActive(href) ? 2.5 : 2} />
+            {label}
+          </Link>
+        ))}
+
+        <div className="divider sidebar-divider" />
+
+        <span className="section-label sidebar-nav-label">Système</span>
+        {NAV_SYS.map(({ href, label, icon: Icon }) => (
+          <Link key={href} href={href} className={`nav-item${isActive(href) ? ' active' : ''}`} aria-current={isActive(href) ? 'page' : undefined}>
+            <Icon size={14} strokeWidth={isActive(href) ? 2.5 : 2} />
+            {label}
+          </Link>
+        ))}
       </nav>
 
-      {/* Footer */}
-      <div className="px-3 pb-4">
-        <button
-          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-[var(--muted)] hover:text-[var(--danger)] hover:bg-[var(--muted-bg)] transition-colors"
-          onClick={() => { localStorage.clear(); window.location.href = '/login'; }}
-        >
-          <LogOut size={16} />
-          Déconnexion
-        </button>
+      {/* User block */}
+      <div className="sidebar-user">
+        <div className="divider" style={{ marginBottom: '12px' }} />
+        <div className="sidebar-user-row">
+          <div className="sidebar-avatar">{initials}</div>
+          <div className="sidebar-user-info">
+            <span className="sidebar-user-name">
+              {user ? `${user.prenom} ${user.nom}` : 'Super Admin'}
+            </span>
+            <span className="sidebar-user-role">Administrateur</span>
+          </div>
+          <button className="sidebar-logout" onClick={logout} title="Déconnexion">
+            <LogOut size={13} />
+          </button>
+        </div>
       </div>
     </aside>
   );

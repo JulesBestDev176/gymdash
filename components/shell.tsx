@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from './sidebar';
+import Spinner from './ui/spinner';
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -17,12 +18,22 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     }
   }, [path, router]);
 
-  if (!ready) return null;
+  if (!ready) {
+    return (
+      <div className="app-loading">
+        <Spinner size="md" style={{ color: 'var(--accent)' } as React.CSSProperties} />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="app-layout">
       <Sidebar />
-      <main className="flex-1 overflow-auto p-6">{children}</main>
+      <main className="app-main">
+        <div className="app-content">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }
