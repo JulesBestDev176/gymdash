@@ -4,3 +4,12 @@ node_modules
 .env*.local
 README.md
 .git
+.env*
+.claude
+.claire
+.impeccable
+.agents
+.superpowers
+.monitoring-deployment.json
+docs
+*.tsbuildinfo

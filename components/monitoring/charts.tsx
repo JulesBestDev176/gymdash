@@ -29,7 +29,7 @@ export function SystemChart({ history }: { history: CollectorSnapshot['history']
 export function RequestCharts({ history }: { history: CollectorSnapshot['api']['history'] }) {
   if (!history.length) return <div className="monitor-empty">Aucune requête mesurée sur cette période. Les mesures sont envoyées par le backend toutes les 30 secondes.</div>;
   return <div className="monitor-grid-2">
-    <div style={{ minWidth: 0 }}><p className="section-label" style={{ marginBottom: 16 }}>Requêtes par minute</p>
+    <div style={{ minWidth: 0 }}><p className="section-label" style={{ marginBottom: 16 }}>Requêtes par intervalle</p>
       <div style={{ width: '100%', height: 210 }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={history} margin={{ left: -20, right: 10 }}>
         <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="timestamp" tickFormatter={time} tick={tick} minTickGap={35} /><YAxis tick={tick} allowDecimals={false} />
