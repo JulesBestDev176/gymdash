@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────────────── */
-type MsgStatus = 'sent' | 'received' | 'pending' | 'failed' | 'unknown' | 'all';
+type MsgStatus = 'sent' | 'pending' | 'failed' | 'unknown' | 'all';
 
 interface WaMessage {
   id: string;
@@ -30,7 +30,7 @@ interface WaData {
   historyAvailable: boolean;
   channel: { name: string; phone: string; status: string } | null;
   messages: WaMessage[];
-  stats: { total: number; sent: number; received: number; pending: number; failed: number; unknown: number };
+  stats: { total: number; sent: number; pending: number; failed: number; unknown: number };
 }
 
 /* ── Helpers ────────────────────────────────────────────────── */
@@ -40,13 +40,11 @@ function resolveStatus(raw: string): Exclude<MsgStatus, 'all'> {
   const s = (raw ?? '').toLowerCase();
   if (['delivered', 'read', 'sent'].includes(s)) return 'sent';
   if (['queued', 'pending', 'sending'].includes(s)) return 'pending';
-  if (s === 'received') return 'received';
   if (['failed', 'undelivered', 'error'].includes(s)) return 'failed';
   return 'unknown';
 }
 
 const STATUS_META = {
-  received: { label: 'Reçu', color: 'var(--accent)', bg: 'var(--accent-dim)', icon: <MessageCircle size={11} /> },
   unknown: { label: 'Inconnu', color: 'var(--fg3)', bg: 'var(--bg2)', icon: <AlertCircle size={11} /> },
   sent:    { label: 'Envoyé',     color: 'var(--success)', bg: 'rgba(34,217,110,0.12)',  icon: <CheckCircle size={11} /> },
   pending: { label: 'En attente', color: 'var(--warning)', bg: 'rgba(255,170,0,0.12)',   icon: <Clock size={11} /> },
@@ -141,7 +139,7 @@ export default function WhatsappPage() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
             <h1 className="page-title">WhatsApp</h1>
-            <p className="page-sub">Messagerie via Relayio — historique récent</p>
+            <p className="page-sub">Messages sortants via Relayio — historique récent</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => { setShowTest((v) => !v); setTestResult(null); }} className="btn-ghost"
@@ -211,9 +209,8 @@ export default function WhatsappPage() {
           {/* Stats chips */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
             {[
-              { label: 'Historique chargé', value: data?.stats.total ?? 0, color: 'var(--fg2)', icon: <MessageCircle size={13} /> },
+              { label: 'Messages sortants', value: data?.stats.total ?? 0, color: 'var(--fg2)', icon: <MessageCircle size={13} /> },
               { label: 'Envoyés',      value: data?.stats.sent ?? 0,    color: 'var(--success)', icon: <CheckCircle size={13} /> },
-              { label: 'Reçus', value: data?.stats.received ?? 0, color: 'var(--accent)', icon: <MessageCircle size={13} /> },
               { label: 'En attente',    value: data?.stats.pending ?? 0, color: 'var(--warning)', icon: <Clock size={13} /> },
               { label: 'Échoués',       value: data?.stats.failed ?? 0,  color: 'var(--danger)',  icon: <XCircle size={13} /> },
             ].map(({ label, value, color, icon }) => (
@@ -288,7 +285,6 @@ export default function WhatsappPage() {
             {([
               { key: 'all' as MsgStatus, label: 'Tous', count: messages.length },
               { key: 'sent' as MsgStatus, label: 'Envoyés', count: data?.stats.sent ?? 0 },
-              { key: 'received' as MsgStatus, label: 'Reçus', count: data?.stats.received ?? 0 },
               { key: 'unknown' as MsgStatus, label: 'Inconnus', count: data?.stats.unknown ?? 0 },
               { key: 'pending' as MsgStatus, label: 'En attente', count: data?.stats.pending ?? 0 },
               { key: 'failed' as MsgStatus, label: 'Échoués', count: data?.stats.failed ?? 0 },

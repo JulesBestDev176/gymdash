@@ -16,6 +16,23 @@
 .monitor-meter{height:5px;border-radius:99px;background:var(--border);overflow:hidden;margin-top:12px}
 .monitor-meter>span{display:block;height:100%;border-radius:99px}
 .monitor-header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.monitor-services-scroll{overflow-x:auto}
+.monitor-services-table{width:100%;min-width:720px;table-layout:fixed}
+.monitor-services-table th,.monitor-services-table td{vertical-align:middle}
+.monitor-services-table td{padding-top:17px;padding-bottom:17px}
+.monitor-services-table tbody tr:last-child td{border-bottom:0}
+.monitor-service-identity{display:flex;align-items:center;gap:12px;min-width:0}
+.monitor-service-icon{display:grid;place-items:center;width:34px;height:34px;flex:0 0 34px;border:1px solid var(--border);border-radius:9px;background:var(--bg2)}
+.monitor-service-name{min-width:0}
+.monitor-service-title{font-size:13px;font-weight:650;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.monitor-service-domain{display:block;font-size:11px;color:var(--fg3);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.monitor-service-state{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:600;white-space:nowrap}
+.monitor-service-state>span{width:6px;height:6px;flex:0 0 6px;border-radius:50%;background:currentColor}
+.monitor-services-table .monitor-service-numeric{text-align:right;white-space:nowrap;font-size:12px}
+.monitor-service-http{color:var(--fg3)}
+.monitor-services-table .monitor-service-action{text-align:right;white-space:nowrap}
+.monitor-service-redeploy{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:11px;padding:7px 10px}
+.monitor-service-unavailable{display:inline-block;color:var(--fg3);padding-right:10px}
 .monitor-period{padding:6px 10px;border:1px solid var(--border2);background:var(--card);color:var(--fg3);border-radius:7px;cursor:pointer;font-size:12px}
 .monitor-period[aria-pressed=true]{color:var(--accent);border-color:rgba(181,255,45,.4)}
 @media(max-width:1000px){.monitor-grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.monitor-grid-2{grid-template-columns:minmax(0,1fr)}}

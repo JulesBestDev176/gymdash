@@ -1,4 +1,5 @@
 import { requireAdmin } from '@/lib/server/admin-auth';
+import { proxyDevelopmentMonitoring } from '@/lib/server/monitoring-proxy';
 import { coolifyJson, RESOURCE_IDS } from '@/lib/server/coolify';
 import { containerMetadataAvailable, serviceState, thresholdAlerts } from '@/lib/monitoring-model';
 import type { BackupInfo, CollectorSnapshot, MonitoringData, MonitoringService, SecurityCheck } from '@/lib/monitoring-model';
@@ -20,6 +21,11 @@ export async function GET(request: Request) {
   if (denied) return denied;
   const selected = Number(new URL(request.url).searchParams.get('hours') ?? 24);
   const hours = [1, 24, 168].includes(selected) ? selected : 24;
+  const proxied = await proxyDevelopmentMonitoring(request, hours, {
+    environment: process.env.NODE_ENV,
+    url: process.env.MONITORING_PROXY_URL,
+  });
+  if (proxied) return proxied;
   const partialErrors: string[] = [];
   const get = async (path: string, label: string) => {
     try { return await coolifyJson(path); }

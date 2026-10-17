@@ -12,7 +12,7 @@ test('missing credentials makes no upstream request', async () => {
   assert.equal((await client.snapshot()).configured, false);
 });
 
-test('real session/messages contract uses x-api-key and distinguishes received history', async () => {
+test('history returns only outgoing messages and excludes incoming messages from counts', async () => {
   const calls: string[] = [];
   const client = createRelayio(config, async (input, init) => {
     calls.push(String(input));
@@ -21,17 +21,34 @@ test('real session/messages contract uses x-api-key and distinguishes received h
     return calls.length === 1 ? reply([session]) : reply([
       { _id: 'db-message', direction: 'inbound', status: 'delivered', body: null, hasMedia: true, chatId: 'test@c.us', timestamp: '2026-10-17T10:00:00Z' },
       { id: 'sent-message', direction: 'outbound', status: 'sent', body: 'fixture', to: 'test@c.us' },
+      { id: 'pending-message', direction: 'outbound', status: 'queued', body: 'pending', to: 'test@c.us' },
+      { id: 'failed-message', direction: 'outbound', status: 'failed', body: 'failed', to: 'test@c.us' },
     ]);
   });
   const result = await client.snapshot();
   assert.deepEqual(calls, ['https://relay.example/v1/sessions', 'https://relay.example/v1/sessions/ses_one/messages']);
   assert.equal(result.connected, true);
   assert.equal(result.channel?.name, 'Loyalty');
-  assert.equal(result.messages[0].body, '[Média]');
-  assert.equal(result.messages[0].status, 'received');
+  assert.deepEqual(result.messages.map(message => message.id), ['sent-message', 'pending-message', 'failed-message']);
+  assert.equal(result.stats.total, 3);
   assert.equal(result.stats.sent, 1);
-  assert.equal(result.stats.received, 1);
+  assert.equal(result.stats.pending, 1);
+  assert.equal(result.stats.failed, 1);
+  assert.equal('received' in result.stats, false);
+  assert.doesNotMatch(JSON.stringify(result), /db-message|test@inbound/);
   assert.equal(result.historyScope, 'fetched');
+});
+
+test('sent-only upstream responses without direction remain visible, received status stays excluded', async () => {
+  let count = 0;
+  const client = createRelayio(config, async () => ++count === 1 ? reply([session]) : reply([
+    { id: 'legacy-outgoing', status: 'delivered', to: 'recipient@c.us' },
+    { id: 'explicit-received', status: 'received', from: 'private-inbound' },
+  ]));
+  const result = await client.snapshot();
+  assert.deepEqual(result.messages.map(message => message.id), ['legacy-outgoing']);
+  assert.equal(result.stats.sent, 1);
+  assert.doesNotMatch(JSON.stringify(result), /private-inbound/);
 });
 
 test('multiple sessions require explicit selection; configured Mongo id resolves canonical session id', async () => {

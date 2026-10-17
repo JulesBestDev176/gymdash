@@ -1,0 +1,11 @@
+{
+    "uuid":  "m3tc4qsecffvu3cfqqcfsspc",
+    "name":  "gympass-backend",
+    "build_pack":  "dockerfile",
+    "git_repository":  "JulesBestDev176/gympass.git",
+    "git_branch":  "main",
+    "base_directory":  "/",
+    "dockerfile_location":  "/Dockerfile",
+    "docker_registry_image_name":  null,
+    "docker_registry_image_tag":  null
+}

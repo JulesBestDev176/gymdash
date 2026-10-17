@@ -48,11 +48,12 @@ $values = @{
     RELAYIO_BASE_URL='https://relayio.minifootapp.com/v1'; RELAYIO_API_KEY=$relayKey; RELAYIO_SESSION_ID=$sessions[0].id
 }
 if (!$Apply) { Write-Output ('Ready: ' + $values.Keys.Count + ' dashboard variables, existing Relayio session ' + $sessions[0].name + ', internal collector on network ' + $dashboard.destination.network); exit 0 }
-SetLocal $values
+$localValues=$values.Clone()
+$localValues.MONITORING_PROXY_URL='https://dash.gympass.minifootapp.com/api/monitoring'
+SetLocal $localValues
 SetEnvs 'applications' $dashboardId $values
-# Instrumentation does not modify the database or notifications. Prevent the
-# existing image entrypoint from applying unrelated local migrations or seeds.
-SetEnvs 'applications' $backendId @{MONITORING_URL=$url; MONITORING_TOKEN=$token; SKIP_PRISMA_MIGRATIONS='true'; SKIP_PRISMA_SEED='true'}
+# No schema changes: preserve the backend's existing migration/seed settings.
+SetEnvs 'applications' $backendId @{MONITORING_URL=$url; MONITORING_TOKEN=$token}
 $services = @(Api 'GET' '/services')
 $service = $services | Where-Object { $_.name -eq 'gympass-monitoring' } | Select-Object -First 1
 if (!$service) {

@@ -1,5 +1,5 @@
 ﻿type Dict = Record<string, unknown>;
-type Status = 'sent' | 'received' | 'pending' | 'failed' | 'unknown';
+type Status = 'sent' | 'pending' | 'failed' | 'unknown';
 export interface RelayioConfig { baseUrl: string; apiKey: string; sessionId: string }
 export interface RelayioMessage { id: string; to: string; body: string; status: Status; createdAt?: string; direction: string }
 interface Session { id: string; name: string; status: string; phone: string }
@@ -19,17 +19,25 @@ export class RelayioError extends Error {
 }
 export function normalizeMessage(value: unknown): RelayioMessage {
   const m = object(value), direction = text(m.direction).toLowerCase(), raw = text(m.status).toLowerCase();
-  const status: Status = direction === 'inbound' ? 'received'
-    : ['sent', 'delivered', 'read'].includes(raw) ? 'sent'
+  const status: Status = ['sent', 'delivered', 'read'].includes(raw) ? 'sent'
     : ['pending', 'queued', 'sending'].includes(raw) ? 'pending'
     : ['failed', 'undelivered', 'error'].includes(raw) ? 'failed' : 'unknown';
   const date = text(m.timestamp) || text(m.createdAt);
   return {
     id: text(m.id) || text(m._id) || text(m.whatsappMessageId),
-    to: (direction === 'inbound' ? text(m.from) : text(m.to)) || text(m.chatId),
+    to: text(m.to) || text(m.chatId),
     body: text(m.body) || (m.hasMedia ? '[Média]' : ''), status, direction,
     createdAt: date && Number.isFinite(Date.parse(date)) ? new Date(date).toISOString() : undefined,
   };
+}
+function isOutgoingMessage(value: unknown): boolean {
+  const message = object(value);
+  const direction = text(message.direction).trim().toLowerCase();
+  // The sent-message API may omit direction. Explicit incoming records must
+  // never leave this server route, even if an upstream version returns them.
+  if (direction && direction !== 'outbound') return false;
+  if (message.fromMe === false || object(message.key).fromMe === false) return false;
+  return text(message.status).toLowerCase() !== 'received';
 }
 export function relayioConfig(): RelayioConfig {
   return { baseUrl: process.env.RELAYIO_BASE_URL || 'https://relayio.minifootapp.com/v1', apiKey: process.env.RELAYIO_API_KEY?.trim() || '', sessionId: process.env.RELAYIO_SESSION_ID?.trim() || '' };
@@ -66,7 +74,7 @@ export function createRelayio(config: RelayioConfig, fetcher: typeof fetch = fet
   async function snapshot(): Promise<RelayioSnapshot> {
     const result: RelayioSnapshot = {
       configured: Boolean(config.apiKey), connected: false, state: 'unconfigured', channel: null,
-      messages: [], stats: { total: 0, sent: 0, received: 0, pending: 0, failed: 0, unknown: 0 }, historyScope: 'fetched', historyAvailable: false,
+      messages: [], stats: { total: 0, sent: 0, pending: 0, failed: 0, unknown: 0 }, historyScope: 'fetched', historyAvailable: false,
     };
     try {
       result.channel = await selectSession();
@@ -74,7 +82,7 @@ export function createRelayio(config: RelayioConfig, fetcher: typeof fetch = fet
       result.state = result.connected ? 'connected' : 'disconnected';
       const messages = await request(`/sessions/${encodeURIComponent(result.channel.id)}/messages`);
       if (!Array.isArray(messages)) throw new RelayioError('Relayio a renvoyé un historique illisible.');
-      result.messages = messages.map(normalizeMessage);
+      result.messages = messages.filter(isOutgoingMessage).map(normalizeMessage);
       result.historyAvailable = true; result.stats.total = result.messages.length;
       for (const message of result.messages) result.stats[message.status]++;
       if (!result.connected) result.error = 'La session WhatsApp est déconnectée. Demandez à un administrateur de la reconnecter dans Relayio.';

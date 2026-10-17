@@ -101,13 +101,22 @@ export default function MonitoringPage() {
           <Stat label="Requêtes API" value={metrics ? metrics.api.totalRequests.toLocaleString('fr-FR') : '—'} detail={metrics ? `${percent(metrics.api.errorRate * 100)} de réponses 5xx · période sélectionnée` : 'Mesures réelles indisponibles'} color="var(--fg)" />
         </div>
         <section className="card monitor-panel"><h2 className="monitor-panel-title">Ressources du serveur</h2><p className="monitor-sub" style={{ marginBottom: 18 }}>Collecte toutes les 30 secondes, même lorsque ce tableau est fermé.</p>{metrics ? <SystemChart history={metrics.history} /> : <div className="monitor-empty">Le collecteur de métriques est indisponible.</div>}</section>
-        <section className="card monitor-panel"><h2 className="monitor-panel-title">Services</h2><p className="monitor-sub">Les sondes HTTP mesurent la disponibilité externe. Les durées réelles des requêtes sont dans Performances API.</p>
-          {data.services.map(service => <div className="monitor-row" key={service.uuid}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 170 }}><Server size={18} color={stateColors[service.state]} /><div><div style={{ fontWeight: 600 }}>{labels[service.name] ?? service.name}</div><div className="monitor-sub">{service.fqdn ? <a href={service.fqdn} target="_blank" rel="noreferrer" style={{ color: 'var(--fg3)' }}>{service.fqdn.replace('https://', '')}</a> : 'Réseau privé'}</div></div></div>
-            <span style={{ fontSize: 12, color: stateColors[service.state] }}>{stateLabels[service.state]}</span>
-            <span className="monitor-sub monitor-number">{ms(service.latencyMs)}{service.httpStatus ? ` · HTTP ${service.httpStatus}` : ''}</span>
-            {service.redeployable && <button className="btn-ghost" aria-label={`Redéployer ${labels[service.name]}`} onClick={() => setConfirmation({ uuid: service.uuid, name: labels[service.name] })} style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center' }}><RotateCcw size={12} /> Redéployer</button>}
-          </div>)}
+        <section className="card" style={{ overflow: 'hidden' }}>
+          <div className="monitor-panel"><h2 className="monitor-panel-title">Services</h2><p className="monitor-sub">Disponibilité externe et temps de réponse des sondes HTTP.</p></div>
+          <div className="monitor-services-scroll">
+            <table className="data-table monitor-services-table">
+              <caption className="sr-only">État des services GymPass</caption>
+              <colgroup><col /><col style={{ width: 132 }} /><col style={{ width: 104 }} /><col style={{ width: 76 }} /><col style={{ width: 140 }} /></colgroup>
+              <thead><tr><th scope="col">Service</th><th scope="col">Statut</th><th scope="col" className="monitor-service-numeric">Latence</th><th scope="col" className="monitor-service-numeric">HTTP</th><th scope="col" className="monitor-service-action">Action</th></tr></thead>
+              <tbody>{data.services.map(service => <tr key={service.uuid}>
+                <td><div className="monitor-service-identity"><span className="monitor-service-icon"><Server size={17} color={stateColors[service.state]} /></span><div className="monitor-service-name"><div className="monitor-service-title">{labels[service.name] ?? service.name}</div>{service.fqdn ? <a className="monitor-service-domain" href={service.fqdn} target="_blank" rel="noreferrer" title={service.fqdn}>{service.fqdn.replace('https://', '')}</a> : <span className="monitor-service-domain">Réseau privé</span>}</div></div></td>
+                <td><span className="monitor-service-state" style={{ color: stateColors[service.state] }}><span aria-hidden="true" />{stateLabels[service.state]}</span></td>
+                <td className="monitor-service-numeric monitor-number">{ms(service.latencyMs)}</td>
+                <td className="monitor-service-numeric monitor-number"><span className="monitor-service-http">{service.httpStatus ?? '—'}</span></td>
+                <td className="monitor-service-action">{service.redeployable ? <button className="btn-ghost monitor-service-redeploy" aria-label={`Redéployer ${labels[service.name]}`} onClick={() => setConfirmation({ uuid: service.uuid, name: labels[service.name] })}><RotateCcw size={12} /> Redéployer</button> : <span className="monitor-service-unavailable" aria-label="Redéploiement non disponible">—</span>}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
         </section>
       </>}
       {tab === 'api' && <>
