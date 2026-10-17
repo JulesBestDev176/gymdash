@@ -5,6 +5,7 @@ import Shell from '@/components/shell';
 import EmptyState from '@/components/ui/empty-state';
 import Spinner from '@/components/ui/spinner';
 import { adminApi } from '@/lib/api';
+import { isAxiosError } from 'axios';
 import {
   UserCircle, Search, AlertCircle, RefreshCw,
   Users, Award, ChevronDown, XCircle, CheckCircle, Eye,
@@ -32,13 +33,6 @@ function genPassword() {
   const letters = Array.from({ length: 4 }, () => LETTERS[Math.floor(Math.random() * LETTERS.length)]).join('');
   const digits  = Array.from({ length: 4 }, () => DIGITS[Math.floor(Math.random() * DIGITS.length)]).join('');
   return letters + digits; // ex: "kbmx5291"
-}
-
-function buildWhatsAppLink(telephone: string, prenom: string, password: string) {
-  const digits = telephone.replace(/\D/g, '');
-  const phone = digits.startsWith('00') ? digits.slice(2) : digits.startsWith('0') ? `221${digits.slice(1)}` : digits;
-  const msg = `Bonjour ${prenom} ! 👋\n\nVoici vos identifiants pour l'application GymBro :\n\n📱 Téléphone : ${telephone}\n🔑 Mot de passe : ${password}\n\nBonne séance ! 💪`;
-  return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
 }
 
 /* ── constants ─────────────────────────────────────────── */
@@ -81,13 +75,13 @@ export default function GymbroUtilisateursPage() {
   const [copiedPwd, setCopiedPwd]       = useState(false);
   const [formError, setFormError]       = useState('');
   const [saving, setSaving]             = useState(false);
-  const [createdUser, setCreatedUser]   = useState<{ prenom: string; telephone: string; password: string } | null>(null);
+  const [creationNotice, setCreationNotice] = useState<{ accepted: boolean; message: string } | null>(null);
 
   function setF(k: keyof CreateForm, v: string) { setForm((f) => ({ ...f, [k]: v })); }
 
   function openCreate() {
     setForm(EMPTY_FORM); setGenPwd(genPassword()); setFormError('');
-    setCopiedPwd(false); setCreatedUser(null); setShowCreate(true);
+    setCopiedPwd(false); setCreationNotice(null); setShowCreate(true);
   }
 
   function copyVal(val: string, setCopied: (v: boolean) => void) {
@@ -95,33 +89,41 @@ export default function GymbroUtilisateursPage() {
   }
 
   async function createUser() {
+    if (saving) return;
     if (!form.prenom.trim() || !form.nom.trim() || !form.telephone.trim()) {
       setFormError('Prénom, nom et téléphone sont obligatoires.');
       return;
     }
     setSaving(true); setFormError('');
     try {
-      const { data: created } = await adminApi.post('/api/v1/gym/gymbro-user', {
+      const { data } = await adminApi.post('/api/v1/gym/gymbro-user', {
         prenom: form.prenom.trim(), nom: form.nom.trim(),
         telephone: form.telephone.trim(), password: genPwd,
         role: form.role,
       });
+      const { whatsapp, ...created } = data;
       setUsers((prev) => [{ ...created, subscriptions: [] }, ...prev]);
-      setCreatedUser({ prenom: form.prenom.trim(), telephone: form.telephone.trim(), password: genPwd });
-    } catch (e: any) {
-      setFormError(e?.response?.data?.message ?? 'Une erreur est survenue.');
+      const accepted = whatsapp?.status === 'accepted';
+      setCreationNotice({ accepted, message: accepted
+        ? `Compte de ${created.prenom} créé. Les identifiants ont été transmis à Relayio pour envoi automatique sur WhatsApp.`
+        : `Compte de ${created.prenom} créé, mais l’envoi WhatsApp n’a pas été confirmé. Vérifiez la connexion Relayio. Ne recréez pas le compte.` });
+      setShowCreate(false);
+      setGenPwd('');
+    } catch (error: unknown) {
+      setFormError(isAxiosError<{ message?: string }>(error) ? error.response?.data?.message ?? 'Une erreur est survenue.' : 'Une erreur est survenue.');
     } finally {
       setSaving(false);
     }
   }
 
   const load = useCallback(() => {
-    setLoading(true); setError('');
     adminApi.get('/api/v1/gym/gymbro-users')
       .then((r) => setUsers(Array.isArray(r.data) ? r.data : []))
       .catch(() => setError('Impossible de charger les données'))
       .finally(() => setLoading(false));
   }, []);
+
+  function reload() { setLoading(true); setError(''); load(); }
 
   useEffect(() => { load(); }, [load]);
 
@@ -191,7 +193,7 @@ export default function GymbroUtilisateursPage() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
             <h1 className="page-title">Utilisateurs GymBro</h1>
-            <p className="page-sub">Membres et coachs de l'application fitness</p>
+            <p className="page-sub">Membres et coachs de l&apos;application fitness</p>
           </div>
           <button
             onClick={openCreate}
@@ -206,11 +208,17 @@ export default function GymbroUtilisateursPage() {
           <div className="banner-error" role="alert">
             <AlertCircle size={14} />
             <span style={{ flex: 1 }}>{error}</span>
-            <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600 }}>
+            <button onClick={reload} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600 }}>
               <RefreshCw size={12} /> Réessayer
             </button>
           </div>
         )}
+
+        {creationNotice && <div role={creationNotice.accepted ? 'status' : 'alert'} className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', color: creationNotice.accepted ? 'var(--success)' : 'var(--warning)' }}>
+          {creationNotice.accepted ? <CheckCircle size={17} /> : <AlertCircle size={17} />}
+          <span style={{ flex: 1, fontSize: 13 }}>{creationNotice.message}</span>
+          <button type="button" onClick={() => setCreationNotice(null)} aria-label="Fermer la notification" style={{ background: 'none', border: 0, color: 'inherit', cursor: 'pointer' }}><X size={15} /></button>
+        </div>}
 
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
@@ -465,49 +473,12 @@ export default function GymbroUtilisateursPage() {
                   <div style={{ fontSize: 11, color: 'var(--fg3)' }}>Créer un compte membre ou coach</div>
                 </div>
               </div>
-              <button onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7 }}>
+              <button disabled={saving} onClick={() => setShowCreate(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7 }}>
                 <X size={14} />
               </button>
             </div>
 
-            {createdUser ? (
-              /* ── Success state ── */
-              <>
-                <div style={{ padding: '28px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, textAlign: 'center' }}>
-                  <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--success-dim)', border: '1px solid rgba(34,217,110,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--success)' }}>
-                    <Check size={24} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--fg)', marginBottom: 4 }}>Compte créé !</div>
-                    <div style={{ fontSize: 12.5, color: 'var(--fg3)' }}>Envoyez les identifiants à {createdUser.prenom} via WhatsApp</div>
-                  </div>
-                  <div style={{ width: '100%', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 11, color: 'var(--fg3)' }}>Téléphone</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>{createdUser.telephone}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 11, color: 'var(--fg3)' }}>Mot de passe</span>
-                      <span className="num" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>{createdUser.password}</span>
-                    </div>
-                  </div>
-                  <a
-                    href={buildWhatsAppLink(createdUser.telephone, createdUser.prenom, createdUser.password)}
-                    target="_blank" rel="noopener noreferrer"
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 20px', borderRadius: 10, background: '#25D366', color: '#fff', fontWeight: 700, fontSize: 13.5, textDecoration: 'none', width: '100%', justifyContent: 'center' }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                    Envoyer via WhatsApp
-                  </a>
-                </div>
-                <div style={{ padding: '0 20px 20px', display: 'flex', justifyContent: 'center' }}>
-                  <button onClick={() => setShowCreate(false)} className="btn-ghost" style={{ padding: '8px 20px', fontSize: 13, borderRadius: 9 }}>
-                    Fermer
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* ── Form ── */
+              {/* ── Form ── */}
               <>
                 <div style={{ padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -551,6 +522,7 @@ export default function GymbroUtilisateursPage() {
                     <label className="section-label" style={{ display: 'block', marginBottom: 5 }}>Téléphone *</label>
                     <input className="input-base" value={form.telephone} onChange={(e) => setF('telephone', e.target.value)}
                       placeholder="+221 77 000 00 00" style={{ width: '100%', fontSize: 13 }} />
+                    <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--fg3)' }}>Les identifiants seront envoyés automatiquement sur WhatsApp après la création.</p>
                   </div>
 
                   {/* Generated password */}
@@ -588,11 +560,10 @@ export default function GymbroUtilisateursPage() {
                   </button>
                   <button onClick={createUser} disabled={saving} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', fontSize: 13, borderRadius: 9, opacity: saving ? 0.7 : 1 }}>
                     {saving ? <Spinner size="sm" /> : <UserPlus size={13} />}
-                    {saving ? 'Création…' : 'Créer le compte'}
+                    {saving ? 'Création et envoi…' : 'Créer le compte'}
                   </button>
                 </div>
               </>
-            )}
           </div>
         </div>
       )}
@@ -601,7 +572,6 @@ export default function GymbroUtilisateursPage() {
       {roleMenu && roleMenuRect && (() => {
         const u = users.find((x) => x.id === roleMenu);
         if (!u) return null;
-        const isCoach = u.role === 'COACH';
         return (
           <div
             onClick={(e) => e.stopPropagation()}

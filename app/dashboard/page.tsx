@@ -17,9 +17,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  function reload(nextPeriod?: DashboardPeriod) {
+    if (nextPeriod === period) return;
+    setLoading(true); setError(''); setData(null);
+    if (nextPeriod) setPeriod(nextPeriod);
+    else setRevision(value => value + 1);
+  }
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true); setError(''); setData(null);
     authenticatedFetch(`/api/dashboard/analytics?period=${period}`, { signal: controller.signal })
       .then(async response => {
         const body = await response.json();
@@ -43,10 +48,10 @@ export default function DashboardPage() {
     <header className="dashboard-overview-header">
       <div><span className="section-label">Vue d’ensemble du réseau</span><h1>Dashboard</h1><p>{data ? data.range.label : 'Revenus, adhérents et activité de vos salles'}</p></div>
       <div className="dashboard-overview-controls"><div className="dashboard-periods" role="group" aria-label="Période des statistiques">
-        {periods.map(item => <button type="button" key={item.value} aria-pressed={period === item.value} onClick={() => setPeriod(item.value)}>{item.label}</button>)}
-      </div><button type="button" className="dashboard-refresh" onClick={() => setRevision(value => value + 1)} disabled={loading} aria-label="Actualiser les statistiques"><RefreshCw size={16} /></button></div>
+        {periods.map(item => <button type="button" key={item.value} aria-pressed={period === item.value} onClick={() => reload(item.value)}>{item.label}</button>)}
+      </div><button type="button" className="dashboard-refresh" onClick={() => reload()} disabled={loading} aria-label="Actualiser les statistiques"><RefreshCw size={16} /></button></div>
     </header>
-    {error && <div className="card dashboard-overview-error" role="alert"><AlertCircle size={19} /><span>{error}</span><button type="button" onClick={() => setRevision(value => value + 1)}>Réessayer</button></div>}
+    {error && <div className="card dashboard-overview-error" role="alert"><AlertCircle size={19} /><span>{error}</span><button type="button" onClick={() => reload()}>Réessayer</button></div>}
     {!error && <><div className="dashboard-overview-kpis">
       {cards.map(({ label, value, note, icon: Icon }) => <section className="card dashboard-overview-kpi" key={label} aria-label={label}>
         <div><span className="section-label">{label}</span><Icon size={18} /></div>
