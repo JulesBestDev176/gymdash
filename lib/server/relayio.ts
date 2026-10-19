@@ -112,7 +112,32 @@ export function createRelayio(config: RelayioConfig, fetcher: typeof fetch = fet
     const clean = phone.replace(/[\s().-]/g, '').replace(/^\+/, '');
     if (!/^[1-9]\d{6,14}$/.test(clean)) throw new RelayioError('Numéro invalide. Indiquez un numéro international complet (ex: +221 77 000 00 00).', 'connected', 400);
     const session = await selectSession();
-    const result = await request(`/sessions/${encodeURIComponent(session.id)}/pairing-code`, {
+    const sid = encodeURIComponent(session.id);
+    const currentStatus = session.status.toUpperCase();
+
+    // Relayio only issues a pairing-code when the session is QR_PENDING.
+    // If it is DISCONNECTED/LOGGED_OUT we must logout → start → wait for QR_PENDING first.
+    if (currentStatus !== 'QR_PENDING') {
+      if (!['LOGGED_OUT', 'DISCONNECTED', 'STARTING'].includes(currentStatus)) {
+        // Already READY — no pairing needed
+        throw new RelayioError('La session est déjà connectée.', 'connected', 409);
+      }
+      // Force a clean restart: logout then start
+      if (currentStatus !== 'STARTING') {
+        await request(`/sessions/${sid}/logout`, { method: 'POST' }).catch(() => null);
+      }
+      await request(`/sessions/${sid}/start`, { method: 'POST' });
+      // Poll up to 10 s for QR_PENDING
+      let waited = 0;
+      while (waited < 10000) {
+        await new Promise(r => setTimeout(r, 1500));
+        waited += 1500;
+        const s = object(await request(`/sessions/${sid}`));
+        if (text(s.status).toUpperCase() === 'QR_PENDING') break;
+      }
+    }
+
+    const result = await request(`/sessions/${sid}/pairing-code`, {
       method: 'POST', body: JSON.stringify({ phoneNumber: clean }),
     });
     const code = text(object(result).code);
