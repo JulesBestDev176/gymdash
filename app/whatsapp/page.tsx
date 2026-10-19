@@ -93,6 +93,7 @@ export default function WhatsappPage() {
   /* reconnect */
   const [reconnecting, setReconnecting] = useState(false);
   const [reconnectError, setReconnectError] = useState('');
+  const [reconnectOk, setReconnectOk] = useState(false);
 
   /* connect by phone number */
   const [showConnect, setShowConnect] = useState(false);
@@ -158,12 +159,13 @@ export default function WhatsappPage() {
 
   /* ── Reconnect ── */
   async function handleReconnect() {
-    setReconnecting(true); setReconnectError('');
+    setReconnecting(true); setReconnectError(''); setReconnectOk(false);
     try {
       const r = await authenticatedFetch('/api/whatsapp/connect', { method: 'PUT' });
       const result = await r.json().catch(() => ({}));
       if (!r.ok) { setReconnectError(result.error || 'Reconnexion impossible.'); return; }
-      setTimeout(load, 2500);
+      setReconnectOk(true);
+      setTimeout(() => { load(); setReconnectOk(false); }, 5000);
     } catch { setReconnectError('Impossible de joindre le serveur. Réessayez.'); }
     finally { setReconnecting(false); }
   }
@@ -316,6 +318,12 @@ export default function WhatsappPage() {
                   Connecter un numéro
                 </button>
 
+                {reconnectOk && (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, color: 'var(--success)', fontSize: 11.5 }}>
+                    <CheckCircle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+                    Session redémarrée. Si elle reste déconnectée, utilisez <strong style={{ color: 'var(--accent)' }}>Connecter un numéro</strong>.
+                  </div>
+                )}
                 {reconnectError && (
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, color: 'var(--danger)', fontSize: 11.5 }}>
                     <XCircle size={12} style={{ flexShrink: 0, marginTop: 1 }} /> {reconnectError}
