@@ -13,6 +13,7 @@ const NAV_MAIN = [
   { href: '/gyms',       label: 'Salles',        icon: Building2 },
   { href: '/adherents',  label: 'Adhérents',     icon: UserCheck },
   { href: '/users',      label: 'Équipe',        icon: Users },
+  { href: '/subscriptions', label: 'Abonnements salles', icon: ClipboardList },
   { href: '/payments',   label: 'Paiements',     icon: CreditCard },
 ];
 

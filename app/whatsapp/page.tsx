@@ -5,7 +5,7 @@ import { authenticatedFetch } from '@/lib/authenticated-fetch';
 import Spinner from '@/components/ui/spinner';
 import {
   MessageCircle, CheckCircle, Clock, XCircle, RefreshCw,
-  Wifi, WifiOff, Send, Search, AlertCircle,
+  Wifi, WifiOff, Send, Search, AlertCircle, Phone, RotateCcw, X, Copy,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────────────── */
@@ -66,6 +66,12 @@ function truncate(s: string, n = 60) {
   return s.length > n ? s.slice(0, n) + '…' : s;
 }
 
+function formatCode(raw: string) {
+  const clean = raw.replace(/\D/g, '');
+  if (clean.length === 8) return `${clean.slice(0, 4)}-${clean.slice(4)}`;
+  return raw;
+}
+
 /* ── Page ───────────────────────────────────────────────────── */
 export default function WhatsappPage() {
   const [data, setData]         = useState<WaData | null>(null);
@@ -83,6 +89,18 @@ export default function WhatsappPage() {
   const [testResult, setTestResult]   = useState<'ok' | 'err' | null>(null);
   const [testError, setTestError] = useState('');
   const [testNotice, setTestNotice] = useState('');
+
+  /* reconnect */
+  const [reconnecting, setReconnecting] = useState(false);
+  const [reconnectError, setReconnectError] = useState('');
+
+  /* connect by phone number */
+  const [showConnect, setShowConnect] = useState(false);
+  const [connectPhone, setConnectPhone] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [pairingCode, setPairingCode] = useState('');
+  const [connectError, setConnectError] = useState('');
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true); setError('');
@@ -129,15 +147,55 @@ export default function WhatsappPage() {
       setTestResult(accepted ? 'ok' : 'err');
       if (accepted) setTestNotice(result.message.status === 'delivered' || result.message.status === 'read'
         ? 'Livraison confirmée par Relayio.'
-        : 'Message pris en charge par Relayio. La livraison au téléphone n’est pas confirmée ; consultez son statut dans l’historique.');
-      if (r.ok && !accepted) setTestError('Prise en charge non confirmée. Vérifiez l’historique avant de réessayer.');
+        : "Message pris en charge par Relayio. La livraison au téléphone n'est pas confirmée ; consultez son statut dans l'historique.");
+      if (r.ok && !accepted) setTestError("Prise en charge non confirmée. Vérifiez l'historique avant de réessayer.");
       if (!r.ok) setTestError(result.error || 'Envoi impossible. Vérifiez la connexion WhatsApp et réessayez.');
       if (r.ok) setTimeout(load, 2000);
     } catch { setTestResult('err'); setTestError('Impossible de joindre le serveur. Réessayez.'); }
     finally { setTestSending(false); }
   }
 
+  /* ── Reconnect ── */
+  async function handleReconnect() {
+    setReconnecting(true); setReconnectError('');
+    try {
+      const r = await authenticatedFetch('/api/whatsapp/connect', { method: 'PUT' });
+      const result = await r.json().catch(() => ({}));
+      if (!r.ok) { setReconnectError(result.error || 'Reconnexion impossible.'); return; }
+      setTimeout(load, 2500);
+    } catch { setReconnectError('Impossible de joindre le serveur. Réessayez.'); }
+    finally { setReconnecting(false); }
+  }
+
+  /* ── Pair phone ── */
+  async function handleConnect() {
+    if (!connectPhone.trim() || connecting) return;
+    setConnecting(true); setPairingCode(''); setConnectError('');
+    try {
+      const r = await authenticatedFetch('/api/whatsapp/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: connectPhone.trim() }),
+      });
+      const result = await r.json().catch(() => ({}));
+      if (!r.ok) { setConnectError(result.error || 'Impossible d\'obtenir le code.'); return; }
+      setPairingCode(result.code ?? '');
+    } catch { setConnectError('Impossible de joindre le serveur. Réessayez.'); }
+    finally { setConnecting(false); }
+  }
+
+  function copyCode() {
+    navigator.clipboard.writeText(pairingCode).then(() => {
+      setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000);
+    });
+  }
+
+  function closeConnectModal() {
+    setShowConnect(false); setConnectPhone(''); setPairingCode(''); setConnectError('');
+  }
+
   const configured = data?.configured ?? false;
+  const isDisconnected = !loading && data && !data.connected;
 
   return (
     <Shell>
@@ -173,6 +231,7 @@ export default function WhatsappPage() {
 
           {/* Connection card */}
           <div className="card" style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Status row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
                 width: 40, height: 40, borderRadius: 11, flexShrink: 0,
@@ -182,14 +241,23 @@ export default function WhatsappPage() {
               }}>
                 {loading ? <Spinner size="sm" /> : data?.connected ? <Wifi size={18} /> : <WifiOff size={18} />}
               </div>
-              <div>
+              <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg)' }}>Connexion</div>
-                <div style={{ fontSize: 12, color: loading ? 'var(--fg3)' : data?.connected ? 'var(--success)' : 'var(--fg3)', marginTop: 1 }}>
-                  {loading ? 'Vérification…' : data?.connected ? 'Connecté' : data?.state === 'auth_error' ? 'Authentification refusée' : data?.state === 'disconnected' ? 'Déconnecté' : data?.configured ? 'Connexion indisponible' : 'Non configuré'}
+                <div style={{
+                  fontSize: 12, marginTop: 1,
+                  color: loading ? 'var(--fg3)' : data?.connected ? 'var(--success)' : 'var(--danger)',
+                  fontWeight: data?.connected ? 600 : 700,
+                }}>
+                  {loading ? 'Vérification…' : data?.connected ? 'Connecté'
+                    : data?.state === 'auth_error' ? 'Authentification refusée'
+                    : data?.state === 'disconnected' ? 'Déconnecté'
+                    : data?.configured ? 'Connexion indisponible'
+                    : 'Non configuré'}
                 </div>
               </div>
             </div>
 
+            {/* Channel info */}
             {data?.channel && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
                 {data.channel.name && (
@@ -207,7 +275,52 @@ export default function WhatsappPage() {
               </div>
             )}
 
-            {!loading && !data?.connected && (
+            {/* Disconnected actions */}
+            {isDisconnected && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11.5, color: 'var(--fg3)', lineHeight: 1.6 }}>
+                  {data?.error || 'La session WhatsApp est déconnectée.'}
+                </div>
+
+                {/* Reconnect button */}
+                <button
+                  onClick={handleReconnect}
+                  disabled={reconnecting}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                    padding: '8px 12px', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    border: '1px solid var(--border2)', background: 'var(--bg2)', color: 'var(--fg2)',
+                    opacity: reconnecting ? 0.6 : 1, width: '100%',
+                  }}
+                >
+                  {reconnecting ? <Spinner size="sm" /> : <RotateCcw size={12} />}
+                  Reconnecter la session
+                </button>
+
+                {/* Pair phone button */}
+                <button
+                  onClick={() => { setShowConnect(true); setPairingCode(''); setConnectError(''); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                    padding: '8px 12px', borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    border: 'none', background: 'var(--accent)', color: '#000',
+                    width: '100%',
+                  }}
+                >
+                  <Phone size={12} />
+                  Connecter un numéro
+                </button>
+
+                {reconnectError && (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, color: 'var(--danger)', fontSize: 11.5 }}>
+                    <XCircle size={12} style={{ flexShrink: 0, marginTop: 1 }} /> {reconnectError}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Not configured + no session */}
+            {!loading && !data?.connected && !isDisconnected && (
               <div style={{ paddingTop: 10, borderTop: '1px solid var(--border)', fontSize: 11.5, color: 'var(--fg3)', lineHeight: 1.6 }}>
                 {data?.error || error || 'Demandez à un administrateur de connecter votre session WhatsApp dans Relayio.'}
               </div>
@@ -235,6 +348,104 @@ export default function WhatsappPage() {
             ))}
           </div>
         </div>
+
+        {/* ── Connect by phone modal ───────────────────────────────── */}
+        {showConnect && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 999,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }} onClick={(e) => { if (e.target === e.currentTarget) closeConnectModal(); }}>
+            <div className="card" style={{
+              width: '100%', maxWidth: 420, padding: '24px 24px 20px', display: 'flex', flexDirection: 'column', gap: 18,
+              position: 'relative',
+            }}>
+              {/* Modal header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                  background: 'rgba(181,255,45,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--accent)',
+                }}>
+                  <Phone size={16} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg)' }}>Connecter un numéro WhatsApp</div>
+                  <div style={{ fontSize: 12, color: 'var(--fg3)', marginTop: 1 }}>Jumelage via code à 8 chiffres</div>
+                </div>
+                <button onClick={closeConnectModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg3)', padding: 4 }}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Instructions */}
+              <div style={{ fontSize: 12, color: 'var(--fg3)', lineHeight: 1.7, background: 'var(--bg2)', borderRadius: 8, padding: '10px 12px' }}>
+                Entrez le numéro du téléphone à lier. WhatsApp enverra un code à 8 chiffres — saisissez-le dans <strong style={{ color: 'var(--fg2)' }}>Paramètres → Appareils liés → Lier un appareil → Lier avec un numéro</strong>.
+              </div>
+
+              {/* Phone input */}
+              <div>
+                <label className="section-label" style={{ display: 'block', marginBottom: 6 }}>Numéro de téléphone</label>
+                <input
+                  className="input-base"
+                  type="tel"
+                  placeholder="+221 77 000 00 00"
+                  value={connectPhone}
+                  onChange={(e) => { setConnectPhone(e.target.value); setConnectError(''); setPairingCode(''); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleConnect(); }}
+                  style={{ width: '100%', fontSize: 14 }}
+                  autoFocus
+                />
+                {connectError && (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>
+                    <XCircle size={12} style={{ flexShrink: 0, marginTop: 1 }} /> {connectError}
+                  </div>
+                )}
+              </div>
+
+              {/* Pairing code result */}
+              {pairingCode && (
+                <div style={{
+                  background: 'rgba(181,255,45,0.06)', border: '1px solid rgba(181,255,45,0.2)',
+                  borderRadius: 10, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10,
+                }}>
+                  <div style={{ fontSize: 11.5, color: 'var(--fg3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Code de jumelage</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span className="num" style={{ fontSize: 32, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.12em', flex: 1 }}>
+                      {formatCode(pairingCode)}
+                    </span>
+                    <button onClick={copyCode} style={{
+                      display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8,
+                      border: '1px solid var(--border2)', background: codeCopied ? 'rgba(34,217,110,0.1)' : 'var(--bg2)',
+                      color: codeCopied ? 'var(--success)' : 'var(--fg3)', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                    }}>
+                      <Copy size={12} /> {codeCopied ? 'Copié !' : 'Copier'}
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--fg3)', lineHeight: 1.6 }}>
+                    Saisissez ce code dans votre application WhatsApp. Il expire rapidement.
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={closeConnectModal} className="btn-ghost" style={{ padding: '9px 16px', fontSize: 13, borderRadius: 9 }}>
+                  Fermer
+                </button>
+                <button
+                  onClick={handleConnect}
+                  disabled={connecting || !connectPhone.trim()}
+                  className="btn-primary"
+                  style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', fontSize: 13, borderRadius: 9, opacity: (connecting || !connectPhone.trim()) ? 0.6 : 1 }}
+                >
+                  {connecting ? <Spinner size="sm" /> : <Phone size={13} />}
+                  {pairingCode ? 'Nouveau code' : 'Obtenir le code'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Test message panel */}
         {showTest && (

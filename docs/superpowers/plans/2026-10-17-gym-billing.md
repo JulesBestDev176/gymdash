@@ -1,0 +1,36 @@
+﻿# Gym billing implementation plan
+
+> For agentic workers: use subagent-driven-development to implement the independent tasks, then review integration.
+
+**Goal:** Manage manual gym subscriptions, grace enforcement and invoice PDFs inside GymDash.
+**Architecture:** Separate platform billing records and settings from member revenue. Backend transactional ledger, server-only Next gateway and management UI, common JWT access enforcement.
+**Tech Stack:** Existing NestJS, Prisma/PostgreSQL, Next.js, React; server-side PDF generation.
+**Spec:** ../specs/2026-10-17-gym-billing-design.md
+
+## Global constraints
+No real invoices/payments seeded or created during verification. Existing gyms remain unconfigured/unblocked. Do not print secrets. No Git or deployment from child agents. Preserve concurrent changes. Additive migration only. Platform billing access requires configured administrator allowlist.
+
+### Task1 Backend ledger and PDF (billing_backend agent)
+- [ ] Write failing policy/ledger/auth tests, implement Prisma billing models and SQL migration.
+- [ ] Implement serializable idempotent invoice/payment commands, settings, queries, cancellation and PDF.
+- [ ] Use disposable PostgreSQL16 integration fixtures to prove balances, rollback and concurrency.
+- [ ] Build, report contract and migration, no production writes.
+Files: prisma/schema.prisma + migrations; src/platform-billing/*; src/app.module.ts registration; package files only if PDF dependency required.
+
+### Task2 Frontend management (billing_ui agent)
+- [ ] Consume exact spec contract via authenticatedFetch /api/billing.
+- [ ] Add /subscriptions UI with Salles,Factures,Paramètres, ledger forms and PDF downloads.
+- [ ] Add sidebar link, bounded filters/pagination, accessible status/errors and retry-safe command ids.
+- [ ] Run tsc and scoped lint; no gateway/backend/deploy changes.
+
+### Task3 Access enforcement and gateway (root)
+- [ ] Test UTC month/grace policy and blocked-session access.
+- [ ] Add access service/module and integrate JwtAuthGuard with platform-management/account-security exemptions.
+- [ ] Test and implement authenticated allowlisted Next gateway, preserve PDF/cache and sanitized errors.
+- [ ] Coordinate model names and policy functions with backend agent before touching dependent fields.
+
+### Task4 Review, migration rehearsal and rollout (root+reviewer)
+- [ ] Independent security/data-integrity review; fix findings.
+- [ ] Fresh builds, PDF rendering, source/HTTP checks and migration rehearsal.
+- [ ] Privately back up DB and configure existing administrator allowlist before additive production migration.
+- [ ] Deploy backend source and dashboard DockerHub, verify read-only local/production endpoints and existing monitoring.
