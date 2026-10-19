@@ -99,6 +99,7 @@ export default function WhatsappPage() {
   const [connectPhone, setConnectPhone] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [pairingCode, setPairingCode] = useState('');
+  const [pairingExpiry, setPairingExpiry] = useState('');
   const [connectError, setConnectError] = useState('');
   const [codeCopied, setCodeCopied] = useState(false);
 
@@ -180,6 +181,10 @@ export default function WhatsappPage() {
       const result = await r.json().catch(() => ({}));
       if (!r.ok) { setConnectError(result.error || 'Impossible d\'obtenir le code.'); return; }
       setPairingCode(result.code ?? '');
+      if (result.expiresAt) {
+        const exp = new Date(result.expiresAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        setPairingExpiry(`Expire à ${exp}`);
+      } else { setPairingExpiry(''); }
     } catch { setConnectError('Impossible de joindre le serveur. Réessayez.'); }
     finally { setConnecting(false); }
   }
@@ -191,7 +196,7 @@ export default function WhatsappPage() {
   }
 
   function closeConnectModal() {
-    setShowConnect(false); setConnectPhone(''); setPairingCode(''); setConnectError('');
+    setShowConnect(false); setConnectPhone(''); setPairingCode(''); setPairingExpiry(''); setConnectError('');
   }
 
   const configured = data?.configured ?? false;
@@ -423,7 +428,7 @@ export default function WhatsappPage() {
                     </button>
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--fg3)', lineHeight: 1.6 }}>
-                    Saisissez ce code dans votre application WhatsApp. Il expire rapidement.
+                    Saisissez ce code dans votre application WhatsApp.{pairingExpiry ? ` ${pairingExpiry}.` : ' Il expire rapidement.'}
                   </div>
                 </div>
               )}

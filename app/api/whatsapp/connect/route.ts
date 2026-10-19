@@ -13,8 +13,8 @@ export async function POST(req: Request) {
     ? (input as Record<string, unknown>).phone as string : '';
   if (!phone.trim()) return NextResponse.json({ error: 'Numéro de téléphone requis.' }, { status: 400 });
   try {
-    const code = await createRelayio(relayioConfig()).pairPhone(phone.trim());
-    return NextResponse.json({ code }, { headers: { 'Cache-Control': 'no-store' } });
+    const { code, expiresAt } = await createRelayio(relayioConfig()).pairPhone(phone.trim());
+    return NextResponse.json({ code, expiresAt }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof RelayioError ? error.message : 'Impossible d\'obtenir le code de jumelage.' },

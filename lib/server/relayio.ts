@@ -106,18 +106,19 @@ export function createRelayio(config: RelayioConfig, fetcher: typeof fetch = fet
   }
   async function reconnect(): Promise<void> {
     const session = await selectSession();
-    await request(`/sessions/${encodeURIComponent(session.id)}/restart`, { method: 'POST' });
+    await request(`/sessions/${encodeURIComponent(session.id)}/start`, { method: 'POST' });
   }
-  async function pairPhone(phone: string): Promise<string> {
+  async function pairPhone(phone: string): Promise<{ code: string; expiresAt?: string }> {
     const clean = phone.replace(/[\s().-]/g, '').replace(/^\+/, '');
     if (!/^[1-9]\d{6,14}$/.test(clean)) throw new RelayioError('Numéro invalide. Indiquez un numéro international complet (ex: +221 77 000 00 00).', 'connected', 400);
     const session = await selectSession();
-    const result = await request(`/sessions/${encodeURIComponent(session.id)}/auth/pair-phone`, {
+    const result = await request(`/sessions/${encodeURIComponent(session.id)}/pairing-code`, {
       method: 'POST', body: JSON.stringify({ phoneNumber: clean }),
     });
     const code = text(object(result).code);
     if (!code) throw new RelayioError('Relayio n\'a pas retourné de code de jumelage. Réessayez.');
-    return code;
+    const expiresAt = text(object(result).expiresAt) || undefined;
+    return { code, expiresAt };
   }
   return { snapshot, send, reconnect, pairPhone };
 }
