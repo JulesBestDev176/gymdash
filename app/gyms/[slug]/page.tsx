@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Shell from '@/components/shell';
+import StaffAccountActions from '@/components/staff-account-actions';
 import EmptyState from '@/components/ui/empty-state';
 import Spinner from '@/components/ui/spinner';
 import { adminApi, fmtFcfa, Gym, GymStatut, User, Member, MemberStatut } from '@/lib/api';
@@ -11,8 +12,20 @@ import {
   TrendingUp, MapPin, Settings, AlertCircle,
   ChevronDown, RefreshCw, X, Eye, EyeOff,
   Search, ChevronLeft, ChevronRight,
-  ShieldOff, ShieldCheck,
+  ShieldOff, ShieldCheck, Wallet, CalendarCheck, Filter,
 } from 'lucide-react';
+
+type PayMode = 'ESPECES' | 'WAVE' | 'ORANGE_MONEY';
+const PAY_MODES: { value: PayMode; label: string }[] = [
+  { value: 'ESPECES',      label: 'Espèces' },
+  { value: 'WAVE',         label: 'Wave' },
+  { value: 'ORANGE_MONEY', label: 'Orange Money' },
+];
+function currentMoisCouvert(offsetMonths = 0) {
+  const d = new Date();
+  d.setMonth(d.getMonth() + offsetMonths);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
 
 /* ── types ────────────────────────────────────────────────── */
 interface Payment {
@@ -97,7 +110,7 @@ function InfoRow({ label, value, last }: { label: string; value: React.ReactNode
 }
 
 /* ── modal nouvel utilisateur ─────────────────────────────── */
-const FORM_INIT = { prenom: '', nom: '', email: '', password: '', role: 'ADMIN' };
+const FORM_INIT = { prenom: '', nom: '', telephone: '', password: '', role: 'ADMIN' };
 
 function NewUserModal({ gymId, onClose, onCreated }: {
   gymId: string;
@@ -216,19 +229,12 @@ function NewUserModal({ gymId, onClose, onCreated }: {
             </div>
           </div>
 
-          {/* Email */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label className="section-label" htmlFor="u-email">Email</label>
-            <input
-              id="u-email"
-              type="email"
-              required
-              autoComplete="off"
-              className="input-base"
-              placeholder="moussa@gympass.sn"
-              value={form.email}
-              onChange={(e) => set('email', e.target.value)}
-            />
+            <label className="section-label" htmlFor="u-phone">Téléphone WhatsApp</label>
+            <input id="u-phone" type="tel" autoComplete="tel" required className="input-base"
+              placeholder="77 123 45 67" value={form.telephone}
+              onChange={(e) => set('telephone', e.target.value)} />
+            <span style={{ color: 'var(--fg2)', fontSize: 12 }}>Indicatif facultatif</span>
           </div>
 
           {/* Mot de passe */}
@@ -316,6 +322,188 @@ function NewUserModal({ gymId, onClose, onCreated }: {
   );
 }
 
+/* ── modal inscription adhérent ──────────────────────────── */
+function NewMemberModal({ gymId, fraisInscription, onClose, onCreated }: {
+  gymId: string; fraisInscription: number;
+  onClose: () => void; onCreated: (m: Member) => void;
+}) {
+  const [form, setForm] = useState({ prenom: '', nom: '', telephone: '' });
+  const [mode, setMode] = useState<PayMode>('ESPECES');
+  const [reference, setReference] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const firstRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    firstRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault(); setError(''); setLoading(true);
+    try {
+      const res = await adminApi.post('/api/v1/members', {
+        ...form,
+        paiement: { mode, reference: reference.trim() || undefined },
+      });
+      onCreated(res.data);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      setError(Array.isArray(msg) ? msg.join(' ') : msg || 'Erreur lors de la création');
+    } finally { setLoading(false); }
+  }
+
+  return (
+    <div role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 460, background: 'var(--card)', border: '1px solid var(--border2)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.5)', animation: 'fadeUp 0.18s ease both' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--fg)', letterSpacing: '-0.01em' }}>Inscrire un adhérent</div>
+            <div style={{ fontSize: 12, color: 'var(--fg3)', marginTop: 2 }}>Frais d'inscription uniquement — 1ère mensualité le mois suivant</div>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--fg3)' }}><X size={15} /></button>
+        </div>
+        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label className="section-label" htmlFor="nm-prenom">Prénom</label>
+              <input ref={firstRef} id="nm-prenom" required className="input-base" placeholder="Moussa" value={form.prenom} onChange={(e) => setForm((f) => ({ ...f, prenom: e.target.value }))} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label className="section-label" htmlFor="nm-nom">Nom</label>
+              <input id="nm-nom" required className="input-base" placeholder="Diallo" value={form.nom} onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label className="section-label" htmlFor="nm-tel">Téléphone</label>
+            <input id="nm-tel" type="tel" required className="input-base" placeholder="77 123 45 67" value={form.telephone} onChange={(e) => setForm((f) => ({ ...f, telephone: e.target.value }))} />
+            <span style={{ fontSize: 11, color: 'var(--fg3)' }}>+221 ajouté automatiquement si absent</span>
+          </div>
+
+          {/* Paiement */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="section-label">Paiement inscription</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {PAY_MODES.map(({ value, label }) => (
+                <button key={value} type="button" onClick={() => { setMode(value); setReference(''); }}
+                  style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', textAlign: 'center', fontSize: 12, fontWeight: 600, border: `1px solid ${mode === value ? 'rgba(181,255,45,0.3)' : 'var(--border2)'}`, background: mode === value ? 'var(--accent-dim)' : 'var(--card2)', color: mode === value ? 'var(--accent)' : 'var(--fg2)', transition: 'all 0.12s' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {mode !== 'ESPECES' && (
+              <input className="input-base" placeholder={`Référence ${mode === 'WAVE' ? 'Wave' : 'Orange Money'}`} value={reference} onChange={(e) => setReference(e.target.value)} />
+            )}
+          </div>
+
+          {/* Total */}
+          <div style={{ background: 'var(--accent-dim)', border: '1px solid rgba(181,255,45,0.2)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, color: 'var(--fg2)', fontWeight: 600 }}>Total à encaisser</span>
+            <span className="num" style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)' }}>{fmtFcfa(fraisInscription)}</span>
+          </div>
+
+          {error && <div className="banner-error" role="alert"><AlertCircle size={14} />{error}</div>}
+          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+            <button type="submit" disabled={loading} className="btn-primary" style={{ flex: 1 }}>
+              {loading ? <><Spinner size="sm" label="Inscription…" /> Inscription…</> : <><Wallet size={14} /> Inscrire et encaisser</>}
+            </button>
+            <button type="button" className="btn-ghost" onClick={onClose}>Annuler</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ── modal mensualité ─────────────────────────────────────── */
+function PayMensualiteModal({ member, gymId, prixMensualite, onClose, onPaid }: {
+  member: Member; gymId: string; prixMensualite: number;
+  onClose: () => void; onPaid: () => void;
+}) {
+  const [moisCouvert, setMoisCouvert] = useState(currentMoisCouvert(1));
+  const [mode, setMode] = useState<PayMode>('ESPECES');
+  const [reference, setReference] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault(); setError(''); setLoading(true);
+    try {
+      await adminApi.post('/api/v1/payments', {
+        memberId: member.id, type: 'ABONNEMENT',
+        moisCouvert, mode, reference: reference.trim() || undefined,
+      });
+      onPaid();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      setError(Array.isArray(msg) ? msg.join(' ') : msg || 'Impossible d\'enregistrer le paiement');
+    } finally { setLoading(false); }
+  }
+
+  const [yr, mo] = moisCouvert.split('-').map(Number);
+  const moLabel = new Date(yr, mo - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+
+  return (
+    <div role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 420, background: 'var(--card)', border: '1px solid var(--border2)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.5)', animation: 'fadeUp 0.18s ease both' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--fg)' }}>Mensualité</div>
+            <div style={{ fontSize: 12, color: 'var(--fg3)', marginTop: 2 }}>{member.prenom} {member.nom} · {member.numeroCarte}</div>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--fg3)' }}><X size={15} /></button>
+        </div>
+        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label className="section-label" htmlFor="pm-mois">Mois couvert</label>
+            <input id="pm-mois" type="month" required className="input-base" value={moisCouvert}
+              onChange={(e) => setMoisCouvert(e.target.value)} />
+            <span style={{ fontSize: 11, color: 'var(--fg3)' }}>Couvre : {moLabel}</span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="section-label">Mode de paiement</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {PAY_MODES.map(({ value, label }) => (
+                <button key={value} type="button" onClick={() => { setMode(value); setReference(''); }}
+                  style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer', textAlign: 'center', fontSize: 12, fontWeight: 600, border: `1px solid ${mode === value ? 'rgba(181,255,45,0.3)' : 'var(--border2)'}`, background: mode === value ? 'var(--accent-dim)' : 'var(--card2)', color: mode === value ? 'var(--accent)' : 'var(--fg2)', transition: 'all 0.12s' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {mode !== 'ESPECES' && (
+              <input className="input-base" placeholder={`Référence ${mode === 'WAVE' ? 'Wave' : 'Orange Money'}`} value={reference} onChange={(e) => setReference(e.target.value)} />
+            )}
+          </div>
+
+          <div style={{ background: 'var(--accent-dim)', border: '1px solid rgba(181,255,45,0.2)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, color: 'var(--fg2)', fontWeight: 600 }}>Mensualité {moLabel}</span>
+            <span className="num" style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)' }}>{fmtFcfa(prixMensualite)}</span>
+          </div>
+
+          {error && <div className="banner-error" role="alert"><AlertCircle size={14} />{error}</div>}
+          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+            <button type="submit" disabled={loading} className="btn-primary" style={{ flex: 1 }}>
+              {loading ? <><Spinner size="sm" label="Enregistrement…" /> Enregistrement…</> : <><CalendarCheck size={14} /> Enregistrer</>}
+            </button>
+            <button type="button" className="btn-ghost" onClick={onClose}>Annuler</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ── page ─────────────────────────────────────────────────── */
 export default function GymDetailPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -335,6 +523,13 @@ export default function GymDetailPage() {
   const [statutMenu, setStatutMenu] = useState(false);
   const [updatingStatut, setUpdatingStatut] = useState(false);
   const [showNewUser, setShowNewUser] = useState(false);
+  const [userNotice, setUserNotice] = useState('');
+  const [showNewMember, setShowNewMember] = useState(false);
+  const [newMemberNotice, setNewMemberNotice] = useState('');
+  const [payingMensualiteFor, setPayingMensualiteFor] = useState<Member | null>(null);
+  const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentDateDebut, setPaymentDateDebut] = useState('');
+  const [paymentDateFin, setPaymentDateFin] = useState('');
 
   const gymStatut = (g: Gym): GymStatut => g.statut ?? 'ACTIF';
 
@@ -442,11 +637,40 @@ export default function GymDetailPage() {
         <NewUserModal
           gymId={gym.id}
           onClose={() => setShowNewUser(false)}
-          onCreated={(u) => { setUsers((prev) => [u, ...prev]); setShowNewUser(false); setTab('equipe'); }}
+          onCreated={(u) => {
+            setUsers((prev) => [u, ...prev]); setShowNewUser(false); setTab(‘equipe’);
+            setUserNotice(u.whatsapp?.status === ‘accepted’
+              ? ‘Compte créé. Identifiants transmis à Relayio pour envoi WhatsApp.’
+              : ‘Compte créé. L’envoi WhatsApp des identifiants n’a pas été confirmé.’);
+          }}
+        />
+      )}
+      {showNewMember && gym && (
+        <NewMemberModal
+          gymId={gym.id}
+          fraisInscription={gym.fraisInscription}
+          onClose={() => setShowNewMember(false)}
+          onCreated={(m) => {
+            setMembers((prev) => [{ ...m, statut: ‘SANS_ABONNEMENT’ as MemberStatut }, ...prev]);
+            setShowNewMember(false);
+            setNewMemberNotice(`${m.prenom} ${m.nom} inscrit(e). Première mensualité à encaisser le mois suivant.`);
+            setTimeout(() => setNewMemberNotice(‘’), 6000);
+          }}
+        />
+      )}
+      {payingMensualiteFor && gym && (
+        <PayMensualiteModal
+          member={payingMensualiteFor}
+          gymId={gym.id}
+          prixMensualite={gym.prixMensualite}
+          onClose={() => setPayingMensualiteFor(null)}
+          onPaid={() => { setPayingMensualiteFor(null); load(); }}
         />
       )}
 
       <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {userNotice && <div role="status" className="card p-4">{userNotice}</div>}
+        {newMemberNotice && <div role="status" style={{ padding: '10px 16px', borderRadius: 10, background: 'var(--success-dim)', color: 'var(--success)', fontSize: 13, fontWeight: 600 }}>{newMemberNotice}</div>}
 
         {/* ══ HEADER ══════════════════════════════════════ */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
@@ -645,10 +869,13 @@ export default function GymDetailPage() {
                     style={{ paddingLeft: 30, fontSize: 12.5, background: 'var(--bg2)', border: '1px solid var(--border2)' }}
                   />
                 </div>
-                <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--fg3)', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 12, color: 'var(--fg3)', whiteSpace: 'nowrap' }}>
                   <span className="num" style={{ color: 'var(--fg2)', fontWeight: 600 }}>{filtered.length}</span>
                   {' '}adhérent{filtered.length !== 1 ? 's' : ''}
                 </span>
+                <button className="btn-primary" style={{ fontSize: 12, padding: '6px 14px', marginLeft: 8 }} onClick={() => setShowNewMember(true)}>
+                  <UserPlus size={13} /> Inscrire
+                </button>
               </div>
 
               {/* Statut filter tabs */}
@@ -690,7 +917,7 @@ export default function GymDetailPage() {
                       <th>Téléphone</th>
                       <th>Statut</th>
                       <th>Expiration</th>
-                      <th style={{ width: 130 }}>Action</th>
+                      <th style={{ minWidth: 230 }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -736,6 +963,12 @@ export default function GymDetailPage() {
                                   ? <><ShieldOff size={11} /> Bloquer</>
                                   : <><ShieldCheck size={11} /> Débloquer</>
                               }
+                            </button>
+                            <button
+                              onClick={() => setPayingMensualiteFor(m)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 11.5, fontWeight: 600, background: 'var(--accent-dim)', color: 'var(--accent)' }}
+                            >
+                              <CalendarCheck size={11} /> Mensualité
                             </button>
                           </td>
                         </tr>
@@ -827,9 +1060,10 @@ export default function GymDetailPage() {
                     <tr>
                       <th>Nom</th>
                       <th>Email</th>
+                      <th>Téléphone</th>
                       <th>Rôle</th>
                       <th>Statut</th>
-                      <th style={{ width: 130 }}>Action</th>
+                      <th style={{ width: 144 }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -840,6 +1074,7 @@ export default function GymDetailPage() {
                         <tr key={u.id}>
                           <td style={{ fontWeight: 600 }}>{u.prenom} {u.nom}</td>
                           <td style={{ color: 'var(--fg2)', fontSize: 13 }}>{u.email}</td>
+                          <td style={{ color: 'var(--fg2)', fontSize: 13, whiteSpace: 'nowrap' }}>{u.telephone || '—'}</td>
                           <td><span className={roleMeta.cls} style={{ fontSize: 10 }}>{roleMeta.label}</span></td>
                           <td>
                             <span className={u.actif ? 'badge badge-success' : 'badge badge-danger'} style={{ fontSize: 10 }}>
@@ -847,12 +1082,16 @@ export default function GymDetailPage() {
                             </span>
                           </td>
                           <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' }}>
                             <button
+                              type="button"
+                              title={u.actif ? 'Désactiver le compte' : 'Activer le compte'}
+                              aria-label={`${u.actif ? 'Désactiver' : 'Activer'} le compte de ${u.prenom} ${u.nom}`}
                               onClick={() => toggleUser(u)}
                               disabled={isToggling}
                               style={{
-                                display: 'flex', alignItems: 'center', gap: 5,
-                                padding: '5px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                width: 32, height: 32, padding: 0, borderRadius: 7, border: 'none', cursor: 'pointer',
                                 fontSize: 11.5, fontWeight: 600, opacity: isToggling ? 0.5 : 1,
                                 background: u.actif ? 'var(--danger-dim)' : 'var(--success-dim)',
                                 color: u.actif ? 'var(--danger)' : 'var(--success)',
@@ -862,10 +1101,13 @@ export default function GymDetailPage() {
                               {isToggling
                                 ? <Spinner size="sm" />
                                 : u.actif
-                                  ? <><ShieldOff size={11} /> Désactiver</>
-                                  : <><ShieldCheck size={11} /> Activer</>
+                                  ? <ShieldOff size={15} />
+                                  : <ShieldCheck size={15} />
                               }
                             </button>
+                            <StaffAccountActions user={u} gymId={gym.id}
+                              onUpdated={(updated) => setUsers((previous) => previous.map((item) => item.id === updated.id ? { ...item, ...updated } : item))} />
+                            </div>
                           </td>
                         </tr>
                       );
@@ -878,60 +1120,90 @@ export default function GymDetailPage() {
         )}
 
         {/* ══ PAIEMENTS ═══════════════════════════════════ */}
-        {tab === 'paiements' && (
-          payments.length === 0 ? (
-            <EmptyState
-              icon={CreditCard}
-              title="Aucun paiement"
-              subtitle="Les paiements de cette salle apparaîtront ici"
-            />
+        {tab === 'paiements' && (() => {
+          const q = paymentSearch.trim().toLowerCase();
+          const filteredPay = payments.filter((p) => {
+            if (q && !`${p.member.prenom} ${p.member.nom}`.toLowerCase().includes(q)) return false;
+            if (paymentDateDebut && p.createdAt < paymentDateDebut) return false;
+            if (paymentDateFin && p.createdAt.slice(0, 10) > paymentDateFin) return false;
+            return true;
+          });
+          return payments.length === 0 ? (
+            <EmptyState icon={CreditCard} title="Aucun paiement" subtitle="Les paiements de cette salle apparaîtront ici" />
           ) : (
             <div className="card" style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div className="section-label">Historique</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              {/* Toolbar */}
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flex: '1 1 180px', maxWidth: 260 }}>
+                  <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg3)', pointerEvents: 'none' }} />
+                  <input type="search" className="input-base" placeholder="Nom de l'adhérent…" value={paymentSearch}
+                    onChange={(e) => setPaymentSearch(e.target.value)}
+                    style={{ paddingLeft: 30, fontSize: 12.5, background: 'var(--bg2)', border: '1px solid var(--border2)' }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto' }}>
+                  <Filter size={12} style={{ color: 'var(--fg3)' }} />
+                  <input type="date" className="input-base" value={paymentDateDebut}
+                    onChange={(e) => setPaymentDateDebut(e.target.value)}
+                    style={{ fontSize: 12, padding: '5px 10px', background: 'var(--bg2)', border: '1px solid var(--border2)', width: 140 }} />
+                  <span style={{ fontSize: 12, color: 'var(--fg3)' }}>→</span>
+                  <input type="date" className="input-base" value={paymentDateFin}
+                    onChange={(e) => setPaymentDateFin(e.target.value)}
+                    style={{ fontSize: 12, padding: '5px 10px', background: 'var(--bg2)', border: '1px solid var(--border2)', width: 140 }} />
+                  {(paymentDateDebut || paymentDateFin || paymentSearch) && (
+                    <button className="btn-ghost" style={{ fontSize: 11, padding: '4px 8px' }}
+                      onClick={() => { setPaymentSearch(''); setPaymentDateDebut(''); setPaymentDateFin(''); }}>
+                      <X size={11} /> Reset
+                    </button>
+                  )}
+                </div>
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
                   <TrendingUp size={12} style={{ color: 'var(--accent)' }} />
                   <span className="num" style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
-                    {fmtFcfa(payments.reduce((s, p) => s + p.montantFcfa, 0))}
+                    {fmtFcfa(filteredPay.reduce((s, p) => s + p.montantFcfa, 0))}
                   </span>
-                  <span style={{ fontSize: 11, color: 'var(--fg3)' }}>total</span>
+                  <span style={{ fontSize: 11, color: 'var(--fg3)' }}>{filteredPay.length} paiement{filteredPay.length !== 1 ? 's' : ''}</span>
                 </div>
               </div>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Adhérent</th>
-                    <th>Formule</th>
-                    <th>Type</th>
-                    <th style={{ textAlign: 'right' }}>Montant</th>
-                    <th style={{ textAlign: 'right' }}>Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payments.slice(0, 50).map((p) => (
-                    <tr key={p.id}>
-                      <td style={{ fontWeight: 600 }}>{p.member.prenom} {p.member.nom}</td>
-                      <td style={{ color: 'var(--fg2)', fontSize: 13 }}>{p.formule}</td>
-                      <td>
-                        <span className={TYPE_META[p.type] ?? 'badge badge-neutral'} style={{ fontSize: 10 }}>
-                          {p.type.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <span className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>
-                          {fmtFcfa(p.montantFcfa)}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right', color: 'var(--fg3)', fontSize: 12 }}>
-                        {new Date(p.createdAt).toLocaleDateString('fr-FR')}
-                      </td>
+
+              {filteredPay.length === 0 ? (
+                <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--fg3)', fontSize: 13 }}>Aucun résultat pour ces filtres</div>
+              ) : (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Adhérent</th>
+                      <th>Formule</th>
+                      <th>Type</th>
+                      <th style={{ textAlign: 'right' }}>Montant</th>
+                      <th style={{ textAlign: 'right' }}>Date</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filteredPay.map((p) => (
+                      <tr key={p.id}>
+                        <td style={{ fontWeight: 600 }}>{p.member.prenom} {p.member.nom}</td>
+                        <td style={{ color: 'var(--fg2)', fontSize: 13 }}>{p.formule}</td>
+                        <td>
+                          <span className={TYPE_META[p.type] ?? 'badge badge-neutral'} style={{ fontSize: 10 }}>
+                            {p.type.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <span className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                            {fmtFcfa(p.montantFcfa)}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right', color: 'var(--fg3)', fontSize: 12 }}>
+                          {new Date(p.createdAt).toLocaleDateString('fr-FR')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
-          )
-        )}
+          );
+        })()}
 
       </div>
     </Shell>
