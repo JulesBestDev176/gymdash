@@ -640,8 +640,8 @@ export default function GymDetailPage() {
           onCreated={(u) => {
             setUsers((prev) => [u, ...prev]); setShowNewUser(false); setTab(‘equipe’);
             setUserNotice(u.whatsapp?.status === ‘accepted’
-              ? ‘Compte créé. Identifiants transmis à Relayio pour envoi WhatsApp.’
-              : ‘Compte créé. L’envoi WhatsApp des identifiants n’a pas été confirmé.’);
+              ? "Compte créé. Identifiants transmis à Relayio pour envoi WhatsApp."
+              : "Compte créé. L’envoi WhatsApp des identifiants n’a pas été confirmé.");
           }}
         />
       )}
