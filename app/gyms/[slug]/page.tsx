@@ -638,10 +638,10 @@ export default function GymDetailPage() {
           gymId={gym.id}
           onClose={() => setShowNewUser(false)}
           onCreated={(u) => {
-            setUsers((prev) => [u, ...prev]); setShowNewUser(false); setTab(‘equipe’);
-            setUserNotice(u.whatsapp?.status === ‘accepted’
+            setUsers((prev) => [u, ...prev]); setShowNewUser(false); setTab('equipe');
+            setUserNotice(u.whatsapp?.status === 'accepted'
               ? "Compte créé. Identifiants transmis à Relayio pour envoi WhatsApp."
-              : "Compte créé. L’envoi WhatsApp des identifiants n’a pas été confirmé.");
+              : "Compte créé. L'envoi WhatsApp des identifiants n'a pas été confirmé.");
           }}
         />
       )}
@@ -651,10 +651,10 @@ export default function GymDetailPage() {
           fraisInscription={gym.fraisInscription}
           onClose={() => setShowNewMember(false)}
           onCreated={(m) => {
-            setMembers((prev) => [{ ...m, statut: ‘SANS_ABONNEMENT’ as MemberStatut }, ...prev]);
+            setMembers((prev) => [{ ...m, statut: 'SANS_ABONNEMENT' as MemberStatut }, ...prev]);
             setShowNewMember(false);
             setNewMemberNotice(`${m.prenom} ${m.nom} inscrit(e). Première mensualité à encaisser le mois suivant.`);
-            setTimeout(() => setNewMemberNotice(‘’), 6000);
+            setTimeout(() => setNewMemberNotice(''), 6000);
           }}
         />
       )}
