@@ -1,0 +1,40 @@
+.staff-account-dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  color: var(--fg);
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .45);
+}
+
+.staff-account-dialog::backdrop { background: rgba(4, 7, 12, .72); backdrop-filter: blur(4px); }
+.staff-account-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 22px 24px 18px; border-bottom: 1px solid var(--border); }
+.staff-account-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.staff-account-heading h2 { margin: 0; font-size: 17px; line-height: 1.3; font-weight: 700; letter-spacing: -.3px; }
+.staff-account-headingIcon { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 11px; background: var(--accent-dim); color: var(--accent); }
+.staff-account-close { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; padding: 0; border: 0; border-radius: 8px; color: var(--fg2); background: transparent; cursor: pointer; }
+.staff-account-close:hover { background: var(--card3); color: var(--fg); }
+.staff-account-form { display: flex; flex-direction: column; gap: 22px; padding: 22px 24px 24px; }
+.staff-account-identity { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.staff-account-identity strong { font-size: 14px; line-height: 1.4; font-weight: 600; }
+.staff-account-identity span { font-size: 12px; line-height: 1.5; color: var(--fg2); overflow-wrap: anywhere; }
+.staff-account-field { display: flex; flex-direction: column; gap: 8px; }
+.staff-account-field label { font-size: 12px; line-height: 1.4; font-weight: 600; color: var(--fg2); }
+.staff-account-field input { height: 46px; font-size: 15px; }
+.staff-account-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--fg3); }
+.staff-account-message { margin: 0; font-size: 14px; line-height: 1.65; color: var(--fg2); }
+.staff-account-error { margin: 0; padding: 10px 12px; font-size: 12px; line-height: 1.5; border-radius: 9px; color: var(--danger); background: var(--danger-dim); }
+.staff-account-footer { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding-top: 2px; }
+.staff-account-footer button { min-height: 40px; }
+.staff-account-cancel { padding: 10px 15px; font-size: 13px; font-weight: 600; line-height: 1; border: 1px solid var(--border2); border-radius: 10px; background: transparent; color: var(--fg2); cursor: pointer; }
+.staff-account-cancel:hover { background: var(--card2); color: var(--fg); }
+.staff-account-close:focus-visible, .staff-account-cancel:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.staff-account-close:disabled, .staff-account-cancel:disabled { opacity: .4; cursor: not-allowed; }
+@media (max-width: 480px) {
+  .staff-account-header { padding: 18px; }
+  .staff-account-form { padding: 18px; }
+}

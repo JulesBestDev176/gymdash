@@ -24,6 +24,11 @@ await page.route('**/api/exercises/**',async route=>{
 await page.goto('http://localhost:3000/gymbro/exercices');await page.getByRole('button',{name:/Voir le mouvement/}).first().waitFor();
 await page.waitForFunction(()=>{const cards=[...document.querySelectorAll('button')].filter(e=>e.textContent.includes('Voir le mouvement'));return cards[0]&&getComputedStyle(cards[0].parentElement).display==='grid';},{},{timeout:60000});
 const out=path.join(workspace,'output/research/exercise-animations');fs.mkdirSync(out,{recursive:true});await page.screenshot({path:path.join(out,'catalog-desktop.png'),fullPage:true});
+const firstCard=page.getByRole('button',{name:/Voir le mouvement/}).first();
+await firstCard.hover();await page.waitForFunction(()=>document.querySelector('.exercise-card img')?.getAttribute('src')?.endsWith('.gif'));
+assert.ok((await page.locator('.exercise-card img').nth(1).getAttribute('src')).endsWith('.png'));
+await page.mouse.move(10,10);await page.waitForFunction(()=>document.querySelector('.exercise-card img')?.getAttribute('src')?.endsWith('.png'));
+await page.emulateMedia({reducedMotion:'reduce'});await firstCard.hover();assert.ok((await firstCard.locator('img').getAttribute('src')).endsWith('.png'));await page.mouse.move(10,10);await page.emulateMedia({reducedMotion:'no-preference'});
 await page.getByRole('button',{name:/Voir le mouvement/}).first().click();await page.getByLabel('Nom affiché en français').fill('Relevé de buste');await page.getByRole('button',{name:'Ajouter en brouillon'}).click();
 await page.getByRole('button',{name:'Valider et publier'}).waitFor();assert.equal(await page.getByRole('button',{name:'Valider et publier'}).isEnabled(),false);
 await page.getByLabel('Consignes · une étape par ligne').fill('Contractez les abdominaux.\nRevenez lentement.');await page.getByRole('button',{name:'Enregistrer les modifications'}).click();await page.getByRole('button',{name:'Lire le mouvement'}).click();await page.getByRole('checkbox',{name:/J’ai visionné/}).check();await page.getByRole('button',{name:'Valider et publier'}).click();await page.getByRole('button',{name:'Désactiver l’exercice'}).waitFor();await page.getByRole('button',{name:'Fermer',exact:true}).click();

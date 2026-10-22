@@ -59,6 +59,8 @@ export interface Gym {
 }
 
 export interface User {
+  telephone?: string | null;
+  whatsapp?: { status: 'accepted' | 'failed' | 'unconfigured' | 'disconnected' | 'invalid_phone' };
   id: string;
   nom: string;
   prenom: string;

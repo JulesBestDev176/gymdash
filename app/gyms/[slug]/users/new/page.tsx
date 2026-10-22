@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Shell from '@/components/shell';
 import Spinner from '@/components/ui/spinner';
@@ -8,13 +8,13 @@ import { adminApi, Gym } from '@/lib/api';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
 
 export default function NewUserPage() {
-  const router = useRouter();
   const { slug } = useParams<{ slug: string }>();
   const [gymId, setGymId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [created, setCreated] = useState('');
   const [form, setForm] = useState({
-    nom: '', prenom: '', email: '', password: '', role: 'ADMIN',
+    nom: '', prenom: '', telephone: '', password: '', role: 'ADMIN',
   });
 
   useEffect(() => {
@@ -33,8 +33,11 @@ export default function NewUserPage() {
     setError('');
     setLoading(true);
     try {
-      await adminApi.post('/api/v1/users/admin-create', { ...form, gymId });
-      router.push(`/gyms/${slug}`);
+      const response = await adminApi.post('/api/v1/users/admin-create', { ...form, gymId });
+      setCreated(response.data.whatsapp?.status === 'accepted'
+        ? 'Compte créé. Identifiants transmis à Relayio pour envoi WhatsApp.'
+        : 'Compte créé. L’envoi WhatsApp des identifiants n’a pas été confirmé.');
+      setForm((previous) => ({ ...previous, password: '' }));
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setError(msg || 'Erreur lors de la création');
@@ -57,7 +60,10 @@ export default function NewUserPage() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="card p-6 flex flex-col gap-5">
+        {created ? <div className="card p-6 space-y-4">
+          <p role="status">{created}</p>
+          <Link href={`/gyms/${slug}`} className="btn-primary">Retour à la salle</Link>
+        </div> : <form onSubmit={handleSubmit} className="card p-6 flex flex-col gap-5">
           {/* Identité */}
           <div>
             <p className="section-label mb-3">Identité</p>
@@ -88,14 +94,11 @@ export default function NewUserPage() {
             <p className="section-label mb-3">Accès</p>
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <label className="section-label">Email</label>
-                <input
-                  type="email"
-                  required
-                  className="input-base"
-                  value={form.email}
-                  onChange={(e) => set('email', e.target.value)}
-                />
+                <label className="section-label" htmlFor="phone">Téléphone WhatsApp</label>
+                <input id="phone" type="tel" autoComplete="tel" required className="input-base"
+                  placeholder="77 123 45 67" value={form.telephone}
+                  onChange={(e) => set('telephone', e.target.value)} />
+                <span style={{ color: 'var(--fg2)', fontSize: 12 }}>Indicatif facultatif</span>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="section-label">Mot de passe temporaire</label>
@@ -142,7 +145,7 @@ export default function NewUserPage() {
               Annuler
             </Link>
           </div>
-        </form>
+        </form>}
       </div>
     </Shell>
   );
