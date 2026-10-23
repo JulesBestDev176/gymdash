@@ -13,7 +13,13 @@ export async function proxyAppReleases(request: Request, segments: string[], con
   if (!config.secret) return fail('Gestion des versions non configurée', 503);
   const upstreamHeaders: Record<string, string> = { Authorization: authorization, 'x-gymdash-secret': config.secret };
   const base = `${config.baseUrl.replace(/\/$/, '')}/api/v1/app-releases`;
-  const send = (url: string, init: RequestInit = {}) => fetcher(url, { ...init, headers: upstreamHeaders, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(method === 'POST' ? 300_000 : 25_000) });
+  const uploadAbort = new AbortController();
+  let oversized = false;
+  const send = (url: string, init: RequestInit = {}) => fetcher(url, {
+    ...init, ...(init.body instanceof ReadableStream ? { duplex: 'half' } : {}),
+    headers: upstreamHeaders, cache: 'no-store', redirect: 'error',
+    signal: AbortSignal.any([request.signal, uploadAbort.signal, AbortSignal.timeout(method === 'POST' ? 300_000 : 25_000)]),
+  });
   const failure = async (response: Response) => {
     if (response.status >= 500) return fail('Gestion des versions temporairement indisponible.', 503);
     const problem = await response.json().catch(() => ({}));
@@ -24,7 +30,7 @@ export async function proxyAppReleases(request: Request, segments: string[], con
     // Never substitute role ADMIN or decoded JWT claims for the platform allowlist.
     if (method === 'POST' || path === 'access' || path === 'latest') {
       const access = await send(`${base}/admin?limit=20`, { method: 'GET' });
-      if (!access.ok) return failure(access);
+      if (!access.ok) return await failure(access);
       if (path === 'access') return Response.json({ allowed: true }, { headers });
     }
     let target = `${base}/${path === 'latest' ? 'android/latest' : path}`;
@@ -40,16 +46,27 @@ export async function proxyAppReleases(request: Request, segments: string[], con
       if (!type?.startsWith('multipart/form-data; boundary=')) return fail('Un fichier APK est requis', 400);
       const max = 256 * 1024 * 1024 + 1024 * 1024; // bounded multipart overhead; backend limits APK to 256 MiB.
       if (Number(request.headers.get('content-length')) > max) return fail('APK trop volumineux (256 Mio maximum)', 413);
-      const reader = request.body?.getReader();
-      if (!reader) return fail('Un fichier APK est requis', 400);
-      const chunks: Uint8Array[] = []; let size = 0;
-      while (true) { const part = await reader.read(); if (part.done) break; size += part.value.byteLength; if (size > max) { await reader.cancel(); return fail('APK trop volumineux (256 Mio maximum)', 413); } chunks.push(part.value); }
-      body = new Blob(chunks as BlobPart[]);
+      if (!request.body) return fail('Un fichier APK est requis', 400);
+      let size = 0;
+      body = request.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          size += chunk.byteLength;
+          if (size > max) {
+            oversized = true;
+            controller.error(new Error('Multipart upload limit exceeded'));
+            uploadAbort.abort();
+            return;
+          }
+          controller.enqueue(chunk);
+        },
+      }), { signal: uploadAbort.signal });
       upstreamHeaders['Content-Type'] = type;
     }
     const response = await send(target, { method, body });
-    if (!response.ok) return failure(response);
+    if (!response.ok) return await failure(response);
     const result = await response.json();
     return Response.json(result.data ?? result, { status: response.status, headers });
-  } catch { return fail('Impossible de joindre le service. Actualisez les versions avant de réessayer une opération.', 503); }
+  } catch {
+    return oversized ? fail('APK trop volumineux (256 Mio maximum)', 413) : fail('Impossible de joindre le service. Actualisez les versions avant de réessayer une opération.', 503);
+  } finally { uploadAbort.abort(); }
 }

@@ -16,9 +16,11 @@ Set `GYMDASH_SECRET` only on the Next.js server, plus `API_INTERNAL_URL` (prefer
 
 The BFF accepts only `access`, `latest`, `admin`, and `admin/:id/publish`, forwards only the cursor query, disables caching and redirects, sanitizes server failures, and never retries writes automatically. APK downloads use the backend's published-only public endpoint. There is no release mutation on page load.
 
-Configure the dashboard ingress, backend ingress, and any hosting request limits to allow at least **257 MiB** for a 256 MiB APK plus multipart overhead, and up to **300 seconds** for uploads. This uses a Node.js route handler with a 300-second upstream timeout; external hosting may impose stricter limits. Multipart buffering is bounded at 257 MiB, so provision server memory for concurrent uploads. The backend enforces the exact APK limit and validates package metadata. Keep the backend's storage bucket private and retain published objects immutably.
+Configure the dashboard ingress, backend ingress, and any hosting request limits to allow at least **257 MiB** for a 256 MiB APK plus multipart overhead, and up to **300 seconds** for uploads. This uses a Node.js route handler with a 300-second upstream timeout; external hosting may impose stricter limits. After verifying platform authorization, the BFF streams multipart bytes upstream with backpressure and a 257 MiB byte cap, aborting oversized transfers without collecting the APK in dashboard memory. The backend enforces the exact APK limit and validates package metadata. Keep the backend's storage bucket private and retain published objects immutably.
 
 Deploy the backend migration, storage/parser dependencies and guarded release endpoints before enabling the dashboard. No release is created or published by deployment, code changes, or build commands.
+
+The dashboard's existing Next.js 16.4.0 triggered its security advisory build reminder during validation. `next` and `eslint-config-next` are patched together to 16.4.1, preserving the React versions. This is the minimum fix identified in the [official October 2026 security update](https://nextjs.org/blog/nextjs-security-update-october-14-2026) for the typed-array cache RCE, SVG image optimization RCE, and Server Actions denial of service advisories. The security reminder is not disabled.
 
 ## Verification
 

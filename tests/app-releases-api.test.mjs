@@ -61,3 +61,20 @@ test('latest remains guarded and bodyless GET cannot publish', async () => {
   assert.deepEqual(await response.json(), { release: null }); assert.equal(calls, 2);
   assert.equal((await proxyAppReleases(request(), ['admin', 'release-1', 'publish'], config, () => { throw Error('must not fetch'); })).status, 405);
 });
+test('upload streams bounded multipart bytes upstream without collecting the APK in memory', async () => {
+  let chunks = 0; let calls = 0; let read = 0;
+  const chunk = new Uint8Array(1024 * 1024);
+  const stream = new ReadableStream({ pull(controller) { if (chunks++ < 258) controller.enqueue(chunk); else controller.close(); } });
+  const upload = new Request('https://dash.example/api/app-releases/admin', { method: 'POST', headers: { Authorization: 'Bearer real-jwt', 'Content-Type': 'multipart/form-data; boundary=test' }, body: stream, duplex: 'half' });
+  const result = await proxyAppReleases(upload, ['admin'], config, async (url, options) => {
+    calls++;
+    if (calls === 1) { assert.equal(chunks <= 1, true, 'must authorize before consuming APK'); return Response.json({ data: { items: [] } }); }
+    assert.equal(options.duplex, 'half');
+    assert.ok(options.body instanceof ReadableStream);
+    const reader = options.body.getReader();
+    while (true) { const part = await reader.read(); if (part.done) break; read += part.value.byteLength; }
+    return Response.json({ data: { id: 'should-not-be-created' } });
+  });
+  assert.equal(result.status, 413); assert.equal(calls, 2);
+  assert.ok(read <= 257 * 1024 * 1024);
+});
