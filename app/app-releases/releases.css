@@ -1,0 +1,11 @@
+.release-form { display:flex; flex-direction:column; gap:18px; max-width:720px; margin-top:22px; }
+.release-form label { display:flex; flex-direction:column; gap:8px; font-size:13px; color:var(--fg2); }
+.release-form button { align-self:flex-start; }
+.release-form textarea { resize:vertical; }
+.release-form progress { width:100%; accent-color:var(--accent); }
+.release-active { color:var(--accent); font-size:28px; margin-top:18px; }
+.release-active span { font-size:13px; color:var(--fg2); }
+.release-notes { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; font-size:13px; margin-top:12px; }
+.release-hash { display:block; overflow-wrap:anywhere; max-width:320px; font-size:10px; color:var(--fg2); }
+.releases-page details { max-width:380px; margin-top:10px; }
+.releases-page summary { cursor:pointer; color:var(--blue); }

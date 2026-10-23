@@ -2,10 +2,11 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
+import { useReleaseAccess } from '@/lib/app-releases';
 import {
   LayoutDashboard, Building2, Users, CreditCard,
   Activity, ClipboardList, UserCheck, LogOut,
-  Dumbbell, ListVideo, UserCircle, MessageCircle,
+  Dumbbell, ListVideo, UserCircle, MessageCircle, Package,
 } from 'lucide-react';
 
 const NAV_MAIN = [
@@ -31,6 +32,7 @@ const NAV_SYS = [
 
 export default function Sidebar() {
   const path = usePathname();
+  const { access: releaseAccess } = useReleaseAccess();
 
   function isActive(href: string) {
     return path === href || (href !== '/dashboard' && path.startsWith(href));
@@ -82,6 +84,7 @@ export default function Sidebar() {
         <div className="divider sidebar-divider" />
 
         <span className="section-label sidebar-nav-label">Système</span>
+        {releaseAccess === 'allowed' && <Link href="/app-releases" className={`nav-item${isActive('/app-releases') ? ' active' : ''}`} aria-current={isActive('/app-releases') ? 'page' : undefined}><Package size={14} /> Versions Android</Link>}
         {NAV_SYS.map(({ href, label, icon: Icon }) => (
           <Link key={href} href={href} className={`nav-item${isActive(href) ? ' active' : ''}`} aria-current={isActive(href) ? 'page' : undefined}>
             <Icon size={14} strokeWidth={isActive(href) ? 2.5 : 2} />
