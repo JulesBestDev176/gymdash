@@ -4,12 +4,19 @@ import axios from 'axios';
 import { Package, RefreshCw, Upload } from 'lucide-react';
 import Shell from '@/components/shell';
 import { releaseRequest, useReleaseAccess, type AppRelease, type ReleasePage } from '@/lib/app-releases';
+import { clearUploadAttempt, readUploadAttempt, saveUploadAttempt, uploadMessage, type UploadAttempt } from '@/lib/release-upload';
 import '../subscriptions/subscriptions.css';
 import './releases.css';
 
 const MAX_APK = 256 * 1024 * 1024;
 const date = (value: string | null) => value ? new Date(value).toLocaleString('fr-FR') : '—';
 const size = (bytes: number) => `${(bytes / 1024 / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mio`;
+function uploadSession() {
+  try {
+    const user = JSON.parse(localStorage.getItem('gymdash_user') || 'null');
+    return { storage: sessionStorage, owner: typeof user?.id === 'string' ? user.id : '' };
+  } catch { return { storage: undefined, owner: '' }; }
+}
 
 function Releases() {
   const { access, retry } = useReleaseAccess();
@@ -25,6 +32,9 @@ function Releases() {
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [stalledSeconds, setStalledSeconds] = useState(0);
+  const [recovery, setRecovery] = useState<UploadAttempt | null>(null);
+  const lastProgress = useRef({ at: 0, bytes: 0 });
   const fileInput = useRef<HTMLInputElement>(null);
   const refresh = () => { setLoading(true); setError(''); setRevision(n => n + 1); };
   useEffect(() => {
@@ -36,28 +46,57 @@ function Releases() {
     ]).then(([data, active]) => {
       if (!abort.signal.aborted) { setPage(data); setLatest(active.release); setError(''); }
     }).catch(err => { if (!abort.signal.aborted) setError(err instanceof Error ? err.message : 'Chargement impossible.'); })
-      .finally(() => { if (!abort.signal.aborted) setLoading(false); });
+      .finally(() => {
+        if (!abort.signal.aborted) {
+          setLoading(false);
+          const session = uploadSession();
+          setRecovery(readUploadAttempt(session.storage, session.owner));
+        }
+      });
     return () => abort.abort();
   }, [access, cursor, revision]);
+  useEffect(() => {
+    if (busy !== 'upload') return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    const timer = window.setInterval(() => setStalledSeconds(Math.floor((Date.now() - lastProgress.current.at) / 1000)), 1000);
+    return () => { window.removeEventListener('beforeunload', warn); window.clearInterval(timer); };
+  }, [busy]);
 
   async function upload(event: React.FormEvent) {
     event.preventDefault();
     if (!file || busy) return;
     if (!file.name.toLowerCase().endsWith('.apk') || file.size === 0 || file.size > MAX_APK) { setError('Sélectionnez un APK valide, de 256 Mio maximum.'); return; }
     setBusy('upload'); setError(''); setNotice(''); setProgress(0);
+    setStalledSeconds(0); setRecovery(null);
+    lastProgress.current = { at: Date.now(), bytes: 0 };
+    const attempt = { name: file.name, size: file.size, startedAt: Date.now() };
+    const session = uploadSession();
+    saveUploadAttempt(session.storage, session.owner, attempt);
     try {
       const body = new FormData(); body.append('apk', file); body.append('notes', notes);
       const token = localStorage.getItem('gymdash_token');
       const result = await axios.post<AppRelease>('/api/app-releases/admin', body, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
-        onUploadProgress: event => { if (event.total) setProgress(Math.min(100, Math.round(event.loaded * 100 / event.total))); },
-        timeout: 300_000,
+        onUploadProgress: event => {
+          if (event.loaded > lastProgress.current.bytes) {
+            lastProgress.current = { at: Date.now(), bytes: event.loaded };
+            setStalledSeconds(0);
+          }
+          if (event.total) setProgress(Math.min(100, Math.floor(event.loaded * 100 / event.total)));
+        },
+        // Allow the five-minute transfer budget plus APK analysis/storage.
+        timeout: 360_000,
       });
+      clearUploadAttempt(session.storage, session.owner);
       setNotice(`Brouillon ${result.data.versionName} (${result.data.versionCode}) créé. Vérifiez les détails avant publication.`);
       setFile(null); setNotes(''); if (fileInput.current) fileInput.current.value = '';
       setCursors([null]); refresh();
     } catch (err) {
-      setError(axios.isAxiosError(err) ? err.response?.data?.error || 'Transfert interrompu. Actualisez la liste pour vérifier si le brouillon a été créé avant de réessayer.' : 'Création impossible.');
+      setRecovery(attempt);
+      setError(axios.isAxiosError(err) ? err.response?.data?.error || (err.code === 'ECONNABORTED'
+        ? 'Le délai d’import a été dépassé. Vérifiez l’historique avant de renvoyer le fichier : le serveur a pu terminer le brouillon.'
+        : 'Connexion interrompue pendant l’import. Vérifiez l’historique avant de renvoyer le fichier.') : 'Création impossible.');
     } finally { setBusy(null); }
   }
   async function publish(release: AppRelease) {
@@ -76,11 +115,17 @@ function Releases() {
     <div className="billing-heading"><div><div className="section-label">Application Android</div><h1 className="page-title">Versions GymPass</h1><p className="page-sub">Importez un APK, vérifiez le brouillon, puis publiez explicitement.</p></div><button className="billing-btn" disabled={!!busy || loading} onClick={refresh}><RefreshCw size={15} /> Actualiser</button></div>
     {notice && <div className="billing-notice" role="status">{notice}<button className="billing-btn" onClick={() => setNotice('')}>Fermer</button></div>}
     {error && <div className="billing-error" role="alert">{error}<button className="billing-btn" disabled={!!busy} onClick={refresh}>Actualiser / réessayer</button></div>}
+    {recovery && busy !== 'upload' && <div className="billing-notice" role="status" aria-label="Import non confirmé">
+      <strong>Import non confirmé : {recovery.name}</strong>
+      <p className="billing-note">{size(recovery.size)} · commencé le {date(new Date(recovery.startedAt).toISOString())}. Une actualisation ou une coupure peut interrompre le transfert. Vérifiez l’historique avant de sélectionner à nouveau l’APK ; aucun renvoi automatique n’est effectué.</p>
+      <button className="billing-btn" onClick={() => { setCursors([null]); refresh(); }}>Vérifier l’historique</button>
+      <button className="billing-btn" onClick={() => { const session = uploadSession(); clearUploadAttempt(session.storage, session.owner); setRecovery(null); }}>J’ai vérifié</button>
+    </div>}
     {loading && <div role="status" className="billing-note">Chargement des versions…</div>}
     <section className="billing-panel" aria-label="Version disponible"><h2><Package size={18} /> Version actuellement disponible</h2>{latest ? <><p className="release-active">{latest.versionName} <span>code {latest.versionCode}</span></p><p className="billing-note">Publiée le {date(latest.publishedAt)} · {size(latest.sizeBytes)}</p><p className="release-notes">{latest.notes || 'Aucune note de version.'}</p></> : !loading && !error ? <p className="billing-note">Aucune version publiée.</p> : <p className="billing-note">Version disponible en cours de vérification.</p>}</section>
     <section className="billing-panel"><h2>Nouveau brouillon</h2><p className="billing-note">APK signé pour com.gympass.gympass_sn · 256 Mio maximum. La version, le package et l’empreinte sont extraits du fichier par le serveur.</p>
       <form className="release-form" onSubmit={upload}><label>Fichier APK<input ref={fileInput} type="file" accept=".apk,application/vnd.android.package-archive" required disabled={!!busy} onChange={event => setFile(event.target.files?.[0] ?? null)} /></label><label>Notes de version<textarea rows={4} maxLength={10000} value={notes} disabled={!!busy} onChange={event => setNotes(event.target.value)} placeholder="Améliorations et correctifs de cette version…" /></label>
-        {busy === 'upload' && <div role="status"><progress aria-label="Progression du transfert APK" value={progress} max={100} /><p className="billing-note">{progress < 100 ? `Transfert : ${progress} %` : 'Transfert terminé. Analyse et enregistrement du brouillon…'}</p></div>}
+        {busy === 'upload' && <div role="status"><progress aria-label="Progression du transfert APK" value={progress} max={100} /><p className="billing-note">{uploadMessage(progress, stalledSeconds)}</p></div>}
         <button className="billing-btn billing-primary" type="submit" disabled={!file || !!busy || loading}><Upload size={15} />{busy === 'upload' ? 'Import en cours…' : 'Importer le brouillon'}</button>
       </form>
     </section>

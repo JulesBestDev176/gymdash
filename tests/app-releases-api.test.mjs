@@ -78,3 +78,8 @@ test('upload streams bounded multipart bytes upstream without collecting the APK
   assert.equal(result.status, 413); assert.equal(calls, 2);
   assert.ok(read <= 257 * 1024 * 1024);
 });
+test('an upstream timeout reports an uncertain import rather than a generic outage', async () => {
+  const result=await proxyAppReleases(request('POST','apk bytes'),['admin'],config,async()=>{throw Object.assign(new Error('fixture timeout'),{name:'TimeoutError'});});
+  assert.equal(result.status,504);
+  assert.match((await result.json()).error,/historique|versions/i);
+});

@@ -18,7 +18,7 @@ export async function proxyAppReleases(request: Request, segments: string[], con
   const send = (url: string, init: RequestInit = {}) => fetcher(url, {
     ...init, ...(init.body instanceof ReadableStream ? { duplex: 'half' } : {}),
     headers: upstreamHeaders, cache: 'no-store', redirect: 'error',
-    signal: AbortSignal.any([request.signal, uploadAbort.signal, AbortSignal.timeout(method === 'POST' ? 300_000 : 25_000)]),
+    signal: AbortSignal.any([request.signal, uploadAbort.signal, AbortSignal.timeout(method === 'POST' ? 330_000 : 25_000)]),
   });
   const failure = async (response: Response) => {
     if (response.status >= 500) return fail('Gestion des versions temporairement indisponible.', 503);
@@ -66,7 +66,12 @@ export async function proxyAppReleases(request: Request, segments: string[], con
     if (!response.ok) return await failure(response);
     const result = await response.json();
     return Response.json(result.data ?? result, { status: response.status, headers });
-  } catch {
-    return oversized ? fail('APK trop volumineux (256 Mio maximum)', 413) : fail('Impossible de joindre le service. Actualisez les versions avant de réessayer une opération.', 503);
+  } catch (error) {
+    if (oversized) return fail('APK trop volumineux (256 Mio maximum)', 413);
+    const timeout = error instanceof Error && (error.name === 'TimeoutError' ||
+      ['UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'].includes((error.cause as { code?: string } | undefined)?.code || ''));
+    return timeout
+      ? fail('Le service a dépassé le délai d’import. Vérifiez l’historique des versions avant de renvoyer l’APK.', 504)
+      : fail('Impossible de joindre le service. Actualisez les versions avant de réessayer une opération.', 503);
   } finally { uploadAbort.abort(); }
 }

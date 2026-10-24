@@ -2,7 +2,7 @@ import { proxyAppReleases } from '@/lib/server/app-releases';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+export const maxDuration = 360;
 
 async function handler(request: Request, context: { params: Promise<{ path: string[] }> }) {
   return proxyAppReleases(request, (await context.params).path, {

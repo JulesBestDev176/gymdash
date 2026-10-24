@@ -33,6 +33,8 @@ jobs:
           cache: npm
       - run: node --test scripts/coolify-deploy.test.mjs
       - run: npm ci --include=dev
+      - name: Verify APK upload and recovery contracts
+        run: node --experimental-strip-types --test tests/app-releases-api.test.mjs tests/release-upload.test.mjs
 
       - run: npm run build
       - name: Verify standalone output
