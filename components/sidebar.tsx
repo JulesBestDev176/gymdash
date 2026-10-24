@@ -84,7 +84,7 @@ export default function Sidebar() {
         <div className="divider sidebar-divider" />
 
         <span className="section-label sidebar-nav-label">Système</span>
-        {releaseAccess === 'allowed' && <Link href="/app-releases" className={`nav-item${isActive('/app-releases') ? ' active' : ''}`} aria-current={isActive('/app-releases') ? 'page' : undefined}><Package size={14} /> Versions Android</Link>}
+        {releaseAccess !== 'denied' && <Link href="/app-releases" title="Importer et publier un APK GymPass" className={`nav-item${isActive('/app-releases') ? ' active' : ''}`} aria-current={isActive('/app-releases') ? 'page' : undefined}><Package size={14} /> Versions Android</Link>}
         {NAV_SYS.map(({ href, label, icon: Icon }) => (
           <Link key={href} href={href} className={`nav-item${isActive(href) ? ' active' : ''}`} aria-current={isActive(href) ? 'page' : undefined}>
             <Icon size={14} strokeWidth={isActive(href) ? 2.5 : 2} />

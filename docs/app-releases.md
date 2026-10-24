@@ -1,6 +1,6 @@
 # Android releases in GymDash
 
-`/app-releases` is reserved for allowlisted platform administrators. The sidebar link appears only after the server verifies access. An ordinary gym `ADMIN` receives a restricted-access page and cannot upload or publish.
+`/app-releases` is reserved for allowlisted platform administrators. **Système → Versions Android** opens the APK upload page. The sidebar link remains visible while access is being checked or the service is unavailable, so an outage cannot silently remove navigation. A confirmed authorization denial hides the link. An ordinary gym `ADMIN` receives a restricted-access page and cannot upload or publish; backend authorization is unchanged.
 
 1. Build and sign the Android APK with the installed application's package and signing key (`com.gympass.gympass_sn`). Choose a higher `versionCode` than the active release.
 2. Open **Système → Versions Android**, select the APK (maximum 256 MiB) and enter release notes (maximum 10,000 characters).

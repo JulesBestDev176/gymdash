@@ -347,7 +347,7 @@ function NewMemberModal({ gymId, fraisInscription, onClose, onCreated }: {
       const res = await adminApi.post('/api/v1/members', {
         ...form,
         paiement: { mode, reference: reference.trim() || undefined },
-      });
+      }, { headers: { 'x-gympass-gym-id': gymId } });
       onCreated(res.data);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
@@ -441,7 +441,7 @@ function PayMensualiteModal({ member, gymId, prixMensualite, onClose, onPaid }: 
       await adminApi.post('/api/v1/payments', {
         memberId: member.id, type: 'ABONNEMENT',
         moisCouvert, mode, reference: reference.trim() || undefined,
-      });
+      }, { headers: { 'x-gympass-gym-id': gymId } });
       onPaid();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
