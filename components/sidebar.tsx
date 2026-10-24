@@ -6,7 +6,7 @@ import { useReleaseAccess } from '@/lib/app-releases';
 import {
   LayoutDashboard, Building2, Users, CreditCard,
   Activity, ClipboardList, UserCheck, LogOut,
-  Dumbbell, ListVideo, UserCircle, MessageCircle, Package,
+  Dumbbell, ListVideo, UserCircle, MessageCircle, Package, Inbox,
 } from 'lucide-react';
 
 const NAV_MAIN = [
@@ -16,6 +16,7 @@ const NAV_MAIN = [
   { href: '/users',      label: 'Équipe',        icon: Users },
   { href: '/subscriptions', label: 'Abonnements salles', icon: ClipboardList },
   { href: '/payments',   label: 'Paiements',     icon: CreditCard },
+  { href: '/contacts',   label: 'Contacts',      icon: Inbox },
 ];
 
 const NAV_GYMBRO = [

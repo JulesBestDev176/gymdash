@@ -96,6 +96,14 @@ export interface Member {
   subscriptions?: { dateExpiration: string; formule: string }[];
 }
 
+export interface ContactLead {
+  id: string;
+  gym: string;
+  city: string;
+  phone: string;
+  createdAt: string;
+}
+
 // Helpers
 export const fmtFcfa = (n: number) =>
   new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
