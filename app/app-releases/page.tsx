@@ -113,8 +113,8 @@ function Releases() {
     } catch (err) {
       setRecovery(attempt);
       setError(axios.isAxiosError(err) ? err.response?.data?.error || (err.code === 'ECONNABORTED'
-        ? 'Le délai d'import a été dépassé. Vérifiez l'historique avant de renvoyer le fichier : le serveur a pu terminer le brouillon.'
-        : 'Connexion interrompue pendant l'import. Vérifiez l'historique avant de renvoyer le fichier.') : 'Création impossible.');
+        ? `Le délai d'import a été dépassé. Vérifiez l'historique avant de renvoyer le fichier : le serveur a pu terminer le brouillon.`
+        : `Connexion interrompue pendant l'import. Vérifiez l'historique avant de renvoyer le fichier.`) : 'Création impossible.');
     } finally { setBusy(null); }
   }
 
