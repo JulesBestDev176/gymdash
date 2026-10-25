@@ -10,4 +10,4 @@ async function handler(request: Request, context: { params: Promise<{ path: stri
     secret: process.env.GYMDASH_SECRET,
   });
 }
-export { handler as GET, handler as POST };
+export { handler as GET, handler as POST, handler as DELETE };
