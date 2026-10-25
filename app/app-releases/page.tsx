@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { Package, RefreshCw, Upload } from 'lucide-react';
+import { Package, RefreshCw, Trash2, Upload } from 'lucide-react';
 import Shell from '@/components/shell';
 import { releaseRequest, useReleaseAccess, type AppRelease, type ReleasePage } from '@/lib/app-releases';
 import { clearUploadAttempt, readUploadAttempt, saveUploadAttempt, uploadMessage, type UploadAttempt } from '@/lib/release-upload';
@@ -99,6 +99,15 @@ function Releases() {
         : 'Connexion interrompue pendant l’import. Vérifiez l’historique avant de renvoyer le fichier.') : 'Création impossible.');
     } finally { setBusy(null); }
   }
+  async function deleteRelease(release: AppRelease) {
+    if (busy || !window.confirm(`Supprimer GymPass ${release.versionName} (code ${release.versionCode}) ?\n\nCette action est irréversible.`)) return;
+    setBusy(release.id + '-del'); setError(''); setNotice('');
+    try {
+      await releaseRequest(`admin/${encodeURIComponent(release.id)}`, { method: 'DELETE' });
+      setNotice(`Version ${release.versionName} supprimée.`); refresh();
+    } catch (err) { setError(`${err instanceof Error ? err.message : 'Suppression impossible.'} Actualisez avant de réessayer.`); }
+    finally { setBusy(null); }
+  }
   async function publish(release: AppRelease) {
     if (busy || !window.confirm(`Publier GymPass ${release.versionName} (code ${release.versionCode}) ?\n\nCette version deviendra disponible pour toutes les applications Android. Le fichier et les notes sont définitifs.`)) return;
     setBusy(release.id); setError(''); setNotice('');
@@ -130,7 +139,7 @@ function Releases() {
       </form>
     </section>
     <section className="billing-panel" aria-label="Historique des versions"><div className="billing-section-heading"><div><h2>Historique des versions</h2><p className="billing-note">20 versions par page · Un brouillon est privé jusqu’à sa publication.</p></div></div>
-      {page && <><div className="billing-table-wrap"><table><thead><tr><th>Version / Package</th><th>Fichier et détails</th><th>Statut</th><th>Publication</th></tr></thead><tbody>{page.items.map(release => <tr key={release.id}><td><strong>{release.versionName} <span className="billing-count">{release.versionCode}</span></strong><small>{release.packageName}</small><small>Importée le {date(release.createdAt)}</small></td><td>{size(release.sizeBytes)}<details><summary>Détails et notes</summary><p className="release-notes">{release.notes || 'Aucune note de version.'}</p><p className="billing-note">SHA-256</p><code className="release-hash">{release.sha256}</code></details></td><td><span className={`billing-status ${release.status === 'PUBLISHED' ? 'billing-status-paid' : 'billing-status-unpaid'}`}>{release.status === 'PUBLISHED' ? 'Publiée' : 'Brouillon'}</span>{latest?.id === release.id && <small>Version active</small>}</td><td>{release.status === 'DRAFT' ? <><button className="billing-btn billing-primary" disabled={!!busy || loading || !!error || !!latest && release.versionCode <= latest.versionCode} onClick={() => publish(release)}>{busy === release.id ? 'Publication…' : 'Publier'}</button>{latest && release.versionCode <= latest.versionCode && <small>Code inférieur ou égal à la version active</small>}</> : <small>{date(release.publishedAt)}</small>}</td></tr>)}</tbody></table></div>{page.items.length === 0 && <div className="billing-empty">Aucune version importée.</div>}<div className="billing-pagination"><button className="billing-btn" disabled={cursors.length === 1 || loading || !!busy} onClick={() => { setLoading(true); setCursors(values => values.slice(0, -1)); }}>Précédent</button><span>Page {cursors.length}</span><button className="billing-btn" disabled={!page.nextCursor || loading || !!busy} onClick={() => { setLoading(true); setCursors(values => [...values, page.nextCursor]); }}>Suivant</button></div></>}
+      {page && <><div className="billing-table-wrap"><table><thead><tr><th>Version / Package</th><th>Fichier et détails</th><th>Statut</th><th>Publication</th></tr></thead><tbody>{page.items.map(release => <tr key={release.id}><td><strong>{release.versionName} <span className="billing-count">{release.versionCode}</span></strong><small>{release.packageName}</small><small>Importée le {date(release.createdAt)}</small></td><td>{size(release.sizeBytes)}<details><summary>Détails et notes</summary><p className="release-notes">{release.notes || 'Aucune note de version.'}</p><p className="billing-note">SHA-256</p><code className="release-hash">{release.sha256}</code></details></td><td><span className={`billing-status ${release.status === 'PUBLISHED' ? 'billing-status-paid' : 'billing-status-unpaid'}`}>{release.status === 'PUBLISHED' ? 'Publiée' : 'Brouillon'}</span>{latest?.id === release.id && <small>Version active</small>}</td><td>{release.status === 'DRAFT' ? <><button className="billing-btn billing-primary" disabled={!!busy || loading || !!error || !!latest && release.versionCode <= latest.versionCode} onClick={() => publish(release)}>{busy === release.id ? 'Publication…' : 'Publier'}</button>{latest && release.versionCode <= latest.versionCode && <small>Code inférieur ou égal à la version active</small>}<button className="billing-btn billing-danger" disabled={!!busy} onClick={() => deleteRelease(release)} title="Supprimer ce brouillon"><Trash2 size={14} /></button></> : <>{date(release.publishedAt)}{latest?.id !== release.id && <button className="billing-btn billing-danger" disabled={!!busy} onClick={() => deleteRelease(release)} title="Supprimer cette version"><Trash2 size={14} /></button>}</>}</td></tr>)}</tbody></table></div>{page.items.length === 0 && <div className="billing-empty">Aucune version importée.</div>}<div className="billing-pagination"><button className="billing-btn" disabled={cursors.length === 1 || loading || !!busy} onClick={() => { setLoading(true); setCursors(values => values.slice(0, -1)); }}>Précédent</button><span>Page {cursors.length}</span><button className="billing-btn" disabled={!page.nextCursor || loading || !!busy} onClick={() => { setLoading(true); setCursors(values => [...values, page.nextCursor]); }}>Suivant</button></div></>}
     </section>
   </div>;
 }
